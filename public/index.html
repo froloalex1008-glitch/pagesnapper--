@@ -206,7 +206,7 @@
         <label for="bhApiKey">FlowHunt API key</label>
         <div class="row" style="margin-bottom:0">
           <div class="field grow"><input id="bhApiKey" type="password" placeholder="Paste your FlowHunt API key" autocomplete="off"></div>
-          <div class="field" style="width:200px"><input id="bhWorkspace" type="text" placeholder="Workspace ID (if required)" autocomplete="off"></div>
+          <div class="field" style="width:200px"><input id="bhWorkspace" type="text" placeholder="Workspace ID (required)" autocomplete="off"></div>
           <button id="bhLoadFlows" type="button" class="flowbtn">Load flows</button>
         </div>
       </div>
@@ -494,6 +494,10 @@ $('bhLoadFlows').onclick = async () => {
   const apiKey = $('bhApiKey').value.trim();
   const workspaceId = $('bhWorkspace').value.trim();
   if (!apiKey) { alert('Paste your FlowHunt API key first.'); return; }
+  /* FlowHunt rejects these calls with a 422 "workspace_id Field required"
+     when it's missing, so catch it here with a message that says what to do
+     rather than passing the raw API error through. */
+  if (!workspaceId) { alert('Workspace ID is required — copy it from the ws= value in your FlowHunt URL.'); return; }
   const btn = $('bhLoadFlows');
   btn.disabled = true; btn.textContent = 'Loading…';
   try {

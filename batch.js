@@ -53,10 +53,20 @@ export async function runBatch({ apiKey, flowId, homepages, width, workspaceId, 
       onLog(`  [${j + 1}/${expanded.length}] capturing ${targetUrl}`);
       try {
         const r = await capture({ url: targetUrl, width, onLog: (m) => onLog(`    ${m}`) });
-        // Copy into this batch's own folder so the zip is self-contained,
-        // independent of whatever else has since landed in the main
-        // screenshots/ folder.
-        const dest = path.join(workDir, r.file);
+        // capture()'s own filenames are host + second-precision timestamp, so
+        // two URLs on the same host captured within the same second (in
+        // practice this needs a very fast page — every capture has several
+        // seconds of built-in settle time — but it's cheap to rule out) could
+        // otherwise collide inside this batch's zip and one screenshot would
+        // silently overwrite the other. `file` below still names the copy
+        // that lives in the shared screenshots/ folder (used for the "view"
+        // link in the UI); only the zip's internal copy gets disambiguated,
+        // and only when a collision would actually happen.
+        let destName = r.file;
+        if (fsSync.existsSync(path.join(workDir, destName))) {
+          destName = `${i + 1}-${j + 1}-${r.file}`;
+        }
+        const dest = path.join(workDir, destName);
         await fs.copyFile(r.path, dest);
         shots.push({ url: targetUrl, file: r.file });
       } catch (err) {

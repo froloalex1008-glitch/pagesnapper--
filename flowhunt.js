@@ -1,19 +1,18 @@
 /* Thin wrapper around FlowHunt's REST API (api.flowhunt.io).
  *
  * There is no official Node/JS SDK — only Python (flowhunt-python-sdk) and PHP.
- * These calls are hand-rolled HTTP requests reverse-engineered from the Python
- * SDK's generated client, since FlowHunt's public docs don't spell out the raw
- * REST shape. That means two things here are informed guesses, not confirmed
- * facts, and are exactly where to look first if a call comes back 401 or 404
- * once tested against a real account:
+ * These calls are hand-rolled HTTP requests based on the Python SDK's
+ * generated client, since FlowHunt's public docs don't spell out the raw REST
+ * shape.
  *
- *   1. Auth header — using `Authorization: Bearer <key>`, which matches the
- *      SDK's `access_token` config option. If that 401s, the key may instead
- *      need to go in a custom header (the SDK also supports an "APIKeyHeader"
- *      scheme whose exact header name wasn't recoverable from the source).
- *   2. Poll-completion detection — `status` is read as a loose string match
- *      for "success"/"complete"/"done" vs "fail"/"error", since the exact
- *      TaskStatus enum values aren't documented anywhere I could find.
+ * The auth header was confirmed against a real account: an API key from
+ * workspace settings goes in `Api-Key`, not `Authorization: Bearer` (see
+ * authHeaders below). Still unconfirmed and the first place to look if a call
+ * misbehaves once a flow actually runs:
+ *
+ *   - Poll-completion detection — `status` is read as a loose string match
+ *     for "success"/"complete"/"done" vs "fail"/"error", since the exact
+ *     TaskStatus enum values aren't documented anywhere I could find.
  *
  * Everything else (endpoint paths, request/response field names) comes
  * directly from the SDK's generated API classes.
@@ -21,9 +20,16 @@
 
 const BASE = 'https://api.flowhunt.io';
 
+/* FlowHunt accepts two auth schemes (both are listed on every endpoint in its
+   OpenAPI spec): "APIKeyHeader" and "HTTPBearer". An API key created in
+   workspace settings goes in the APIKeyHeader one, whose literal header name
+   is `Api-Key` — confirmed from the Python SDK's own auth_settings(). Sending
+   it as `Authorization: Bearer` instead returns
+   401 {"error_code":401,"message":"Authentication required"}; the Bearer
+   scheme is for OAuth-style access tokens, not for these keys. */
 function authHeaders(apiKey) {
   return {
-    Authorization: `Bearer ${apiKey}`,
+    'Api-Key': apiKey,
     'Content-Type': 'application/json',
   };
 }
@@ -98,21 +104,33 @@ export async function runFlow(apiKey, flowId, humanInput, opts = {}) {
 }
 
 /** The flow's output shape isn't fixed by FlowHunt — it's whatever text the
- *  flow itself produces. Tries a JSON array first, then falls back to
- *  scanning free text for anything URL-shaped (one per line, comma-separated,
- *  or embedded in prose) — whichever "Screenshoting pages" flow actually
- *  returns, this should recover the list either way. */
+ *  flow itself produces. The "Screenshoting pages" agent returns a structured
+ *  summary ending in a urls list (homepage / about us / services), written as
+ *  prose-with-markdown, so the text scan below is the path that actually runs.
+ *  A JSON array is still handled first in case a flow returns one. */
 export function extractUrls(result) {
-  if (Array.isArray(result)) return [...new Set(result.filter((u) => typeof u === 'string'))];
+  /* Trailing characters a URL picks up from the text around it, none of which
+     can end a real URL:
+       . , ; : ! ? )  — sentence and list punctuation ("see https://x.com.")
+       \              — markdown escaping. The agent writes URLs inside a
+                        markdown list and escapes them, so its output contains
+                        "https://www.flowhunt.io/\". Left in place this is
+                        genuinely dangerous rather than merely untidy: the URL
+                        parser silently rewrites a backslash to a forward
+                        slash, turning that into "https://www.flowhunt.io//",
+                        which 404s on most servers — so every capture fails
+                        with an error that looks like the site's fault. */
+  const clean = (u) => String(u).trim().replace(/[.,;:!?)\\]+$/, '');
+  const uniq = (list) => [...new Set(list.map(clean).filter(Boolean))];
+
+  if (Array.isArray(result)) return uniq(result.filter((u) => typeof u === 'string'));
   const text = String(result ?? '');
   try {
     const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return [...new Set(parsed.filter((u) => typeof u === 'string'))];
+    if (Array.isArray(parsed)) return uniq(parsed.filter((u) => typeof u === 'string'));
   } catch { /* not JSON — fall through to text scanning */ }
-  const matches = text.match(/https?:\/\/[^\s,"'\]\)]+/g) || [];
-  // Strip trailing sentence/list punctuation a URL embedded in prose can pick
-  // up ("see https://example.com." or "https://example.com,") — the URL
-  // itself basically never ends in one of these characters.
-  const cleaned = matches.map((u) => u.replace(/[.,;:!?)]+$/, ''));
-  return [...new Set(cleaned)];
+  // Backslash is excluded from the match itself too, so an escaped URL ends at
+  // the escape rather than swallowing it and whatever follows.
+  const matches = text.match(/https?:\/\/[^\s,"'\]\)\\]+/g) || [];
+  return uniq(matches);
 }
