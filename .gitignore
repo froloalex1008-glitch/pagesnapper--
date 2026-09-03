@@ -1,0 +1,7 @@
+node_modules/
+screenshots/*.png
+!screenshots/.gitkeep
+*.zip
+*.log
+.DS_Store
+.env

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>pagesnap — Sign in</title>
+<style>
+ :root{--bg:#0e1116;--panel:#161b22;--line:#262d38;--fg:#e6edf3;--muted:#8b949e;--accent:#4c8dff;--err:#f85149}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--fg);min-height:100vh;display:flex;
+   align-items:center;justify-content:center;padding:24px;
+   font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+   padding:32px;width:100%;max-width:380px}
+ h1{font-size:26px;margin:0 0 6px;letter-spacing:-.02em}
+ h1 span{color:var(--accent)}
+ p.sub{color:var(--muted);font-size:14px;margin:0 0 24px}
+ label{display:block;font-size:12px;color:var(--muted);font-weight:600;
+   letter-spacing:.03em;text-transform:uppercase;margin-bottom:6px}
+ input{width:100%;background:#0d1117;border:1px solid var(--line);color:var(--fg);
+   padding:12px 14px;border-radius:8px;font-size:15px}
+ input:focus{outline:none;border-color:var(--accent)}
+ button{width:100%;margin-top:16px;background:var(--accent);color:#fff;border:0;
+   padding:12px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+ button:hover{filter:brightness(1.08)}
+ .err{color:var(--err);font-size:13px;margin-top:14px;display:none}
+ .err.show{display:block}
+</style></head>
+<body>
+ <form class="card" method="POST" action="/login">
+  <h1>page<span>snap</span></h1>
+  <p class="sub">Enter the password to continue.</p>
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
+  <button type="submit">Sign in</button>
+  <div class="err" id="err">Incorrect password. Try again.</div>
+ </form>
+ <script>
+  // ?error=1 is set by the server on a failed attempt.
+  if (new URLSearchParams(location.search).has('error')) {
+    document.getElementById('err').classList.add('show');
+  }
+ </script>
+</body></html>

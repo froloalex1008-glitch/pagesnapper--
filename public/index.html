@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pagesnap</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#262d38; --fg:#e6edf3;
+    --muted:#8b949e; --accent:#4c8dff; --ok:#3fb950; --err:#f85149; --warn:#d29922;
+    --stack-gap:22px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px 80px;position:relative}
+  .signout{position:absolute;top:40px;right:24px;margin:0}
+  .signout button{background:transparent;border:1px solid var(--line);color:var(--muted);
+    padding:7px 14px;font-size:13px;font-weight:500}
+  .signout button:hover{border-color:var(--accent);color:var(--fg)}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 28px;font-size:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:20px}
+  form{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field.grow{flex:1 1 320px;min-width:0}
+  label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+  .hint{margin:12px 0 0;font-size:13px;color:var(--muted);line-height:1.5}
+  input[type=url]{width:100%;background:#0d1117;border:1px solid var(--line);
+    color:var(--fg);padding:11px 14px;border-radius:8px;font-size:15px}
+  input[type=url]:focus{outline:none;border-color:var(--accent)}
+  select{background:#0d1117;border:1px solid var(--line);color:var(--fg);padding:11px 10px;border-radius:8px}
+  button{background:var(--accent);color:#fff;border:0;padding:11px 22px;border-radius:8px;
+    font-size:15px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .presets{margin-top:16px;display:flex;gap:10px;align-items:flex-start}
+  /* 23 presets in one wrapped block, capped in height so they never push the
+     capture button off screen on a laptop. */
+  .chiprow{display:flex;gap:7px;flex-wrap:wrap;max-height:96px;overflow-y:auto;flex:1}
+  .presets span{color:var(--muted);font-size:13px}
+  .chip{background:#0d1117;border:1px solid var(--line);color:var(--muted);padding:4px 10px;
+    border-radius:999px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .chip:hover{color:var(--fg)}
+  .chip:hover{border-color:var(--accent)}
+  #log{font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+    max-height:280px;overflow:auto;white-space:pre-wrap;margin:0}
+  #log b{color:var(--fg);font-weight:400}
+  .hidden{display:none}
+  .stats{display:flex;gap:22px;flex-wrap:wrap;margin:0;font-size:13px;color:var(--muted)}
+  .stats b{color:var(--fg);font-weight:600}
+  /* --stack-gap drives BOTH the stats->buttons gap and the buttons->note gap,
+     so the two stay equal by construction rather than by two tuned numbers. */
+  .outhead{display:flex;justify-content:space-between;align-items:flex-start;
+    gap:var(--stack-gap);flex-wrap:wrap}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+  .dlbtn{background:var(--ok);white-space:nowrap}
+  .openbtn{background:transparent;border:1px solid var(--line);color:var(--fg);white-space:nowrap}
+  .openbtn:hover{border-color:var(--accent)}
+  .dlbtn:disabled{opacity:.6}
+  .saved{margin:var(--stack-gap) 0 18px;font-size:13px;color:var(--muted)}
+  .saved code{color:var(--fg);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .galhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
+  .galhead h2{font-size:15px;margin:0;font-weight:600}
+  .galhead span{color:var(--muted);font-weight:400}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+  .shotcard{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#0d1117;
+    display:flex;flex-direction:column}
+  .shotcard a.thumb{display:block;height:150px;overflow:hidden;background:#000;border-bottom:1px solid var(--line)}
+  /* object-position:top so the crop shows the top of the page, which is what
+     identifies the site — a middle crop of a 15000px page is unrecognisable. */
+  .shotcard img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+  .shotmeta{padding:9px 11px;font-size:12px;color:var(--muted);display:flex;
+    justify-content:space-between;gap:8px;align-items:center}
+  .shotmeta a{color:var(--fg);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shotmeta a:hover{color:var(--accent)}
+  .empty{color:var(--muted);font-size:13px}
+  .shot{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+  .shot img{display:block;width:100%;height:auto}
+  a{color:var(--accent)}
+  .err{color:var(--err)}
+  .note{color:var(--warn);font-size:13px}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:s .7s linear infinite;vertical-align:-1px}
+  @keyframes s{to{transform:rotate(360deg)}}
+
+  .tabs{display:flex;gap:4px;margin:0 0 20px;border-bottom:1px solid var(--line)}
+  .tab{background:transparent;border:0;color:var(--muted);padding:10px 4px;margin-right:20px;
+    font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent}
+  .tab:hover{color:var(--fg)}
+  .tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+  input[type=password],input[type=text]{width:100%;background:#0d1117;border:1px solid var(--line);
+    color:var(--fg);padding:11px 14px;border-radius:8px;font-size:15px}
+  input[type=password]:focus,input[type=text]:focus{outline:none;border-color:var(--accent)}
+  input[type=file]{color:var(--muted);font-size:13px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .rowend{display:flex;gap:8px}
+  .flowbtn{background:transparent;border:1px solid var(--line);color:var(--fg);
+    padding:11px 16px;white-space:nowrap}
+  .flowbtn:hover{border-color:var(--accent)}
+  .filecount{font-size:13px;color:var(--muted);margin:6px 0 0}
+  .filecount b{color:var(--fg)}
+  .summary{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+  .summary details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#0d1117}
+  .summary summary{cursor:pointer;font-size:13.5px;color:var(--fg)}
+  .summary summary .n{color:var(--muted)}
+  .summary ul{margin:10px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
+  .summary a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form method="POST" action="/logout" class="signout"><button type="submit">Sign out</button></form>
+  <h1>page<span>snap</span></h1>
+  <p class="sub">Full-page screenshots of JavaScript-rendered sites. Waits for hydration, forces lazy images, freezes animation, then captures.</p>
+
+  <div class="tabs">
+    <button class="tab active" type="button" data-view="single">Single capture</button>
+    <button class="tab" type="button" data-view="batch">Batch (FlowHunt)</button>
+  </div>
+
+  <div id="singleView">
+  <div class="card">
+    <form id="f">
+      <div class="field grow">
+        <label for="url">Page to capture</label>
+        <input id="url" type="url" placeholder="https://www.flowhunt.io/" required value="https://www.flowhunt.io/">
+      </div>
+      <div class="field">
+        <label for="width">Viewport width</label>
+        <select id="width">
+          <option value="1440" selected>Desktop — 1440px</option>
+          <option value="1920">Large desktop — 1920px</option>
+          <option value="1280">Laptop — 1280px</option>
+          <option value="390">Mobile — 390px</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button id="go" type="submit">Capture</button>
+      </div>
+    </form>
+    <p class="hint" id="hint"></p>
+    <div class="presets">
+      <span>Try:</span>
+      <div class="chiprow">
+        <button class="chip" type="button" data-u="https://www.flowhunt.io/">flowhunt.io</button>
+        <button class="chip" type="button" data-u="https://www.sme.sk/">sme.sk</button>
+        <button class="chip" type="button" data-u="https://www.marabini.com/">marabini</button>
+        <button class="chip" type="button" data-u="https://www.maugerimacchine.it/">maugerimacchine</button>
+        <button class="chip" type="button" data-u="https://www.gioxas.eu/">gioxas</button>
+        <button class="chip" type="button" data-u="https://www.technava.gr/">technava</button>
+        <button class="chip" type="button" data-u="https://www.bss.pl/">bss.pl</button>
+        <button class="chip" type="button" data-u="https://www.gbgnudi.it/">gbgnudi</button>
+        <button class="chip" type="button" data-u="https://www.distrame.fr/">distrame</button>
+        <button class="chip" type="button" data-u="https://www.fenixsystems.eu/">fenixsystems</button>
+        <button class="chip" type="button" data-u="https://www.logcenter.it/">logcenter</button>
+        <button class="chip" type="button" data-u="https://www.amitek.it/">amitek</button>
+        <button class="chip" type="button" data-u="https://www.farocarrelli.com/">farocarrelli</button>
+        <button class="chip" type="button" data-u="https://www.proenerg.com.ro/">proenerg</button>
+        <button class="chip" type="button" data-u="https://www.eventus-nm.si/">eventus-nm</button>
+        <button class="chip" type="button" data-u="https://aldifrio.com/">aldifrio</button>
+        <button class="chip" type="button" data-u="https://www.cemps.ro/">cemps</button>
+        <button class="chip" type="button" data-u="https://www.alfis.lv/">alfis</button>
+        <button class="chip" type="button" data-u="https://www.hmmuellner.com/">hmmuellner</button>
+        <button class="chip" type="button" data-u="https://www.isenmann.fr/">isenmann</button>
+        <button class="chip" type="button" data-u="https://www.parivend.it/">parivend</button>
+        <button class="chip" type="button" data-u="https://www.petean.it/">petean</button>
+        <button class="chip" type="button" data-u="https://www.elco-mb.cz/">elco-mb</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="logCard"><p id="log"></p></div>
+
+  <div class="card" id="gallerycard">
+    <div class="galhead">
+      <h2>Captured screenshots <span id="galcount"></span></h2>
+      <button id="galrefresh" type="button" class="openbtn">↻ Refresh</button>
+    </div>
+    <div id="gallery" class="gallery"></div>
+  </div>
+
+  <div class="card hidden" id="out">
+    <div class="outhead">
+      <div class="stats" id="stats"></div>
+      <div class="btnrow">
+        <button id="open" type="button" class="openbtn">↗ Open in new tab</button>
+        <button id="dl" type="button" class="dlbtn">⬇ Download PNG</button>
+      </div>
+    </div>
+    <p class="saved" id="saved"></p>
+    <div class="shot"><img id="img" alt="Captured full-page screenshot"></div>
+  </div>
+  </div><!-- /singleView -->
+
+  <div id="batchView" class="hidden">
+    <div class="card">
+      <p class="hint" style="margin-top:0">
+        Give it a FlowHunt flow that takes a homepage URL and returns a list of URLs to screenshot,
+        plus a CSV of homepages. It runs the flow on each homepage, screenshots everything the flow
+        returns, and bundles it all into one ZIP.
+      </p>
+
+      <div class="field" style="margin-bottom:14px">
+        <label for="bhApiKey">FlowHunt API key</label>
+        <div class="row" style="margin-bottom:0">
+          <div class="field grow"><input id="bhApiKey" type="password" placeholder="Paste your FlowHunt API key" autocomplete="off"></div>
+          <div class="field" style="width:200px"><input id="bhWorkspace" type="text" placeholder="Workspace ID (if required)" autocomplete="off"></div>
+          <button id="bhLoadFlows" type="button" class="flowbtn">Load flows</button>
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <label for="bhFlow">Flow</label>
+        <select id="bhFlow" disabled><option>Load flows first</option></select>
+      </div>
+
+      <div class="field" style="margin-bottom:6px">
+        <label for="bhCsv">CSV of homepage URLs (one per line, or a "url" column)</label>
+        <input id="bhCsv" type="file" accept=".csv,text/csv">
+      </div>
+      <p class="filecount" id="bhCount"></p>
+
+      <div class="row" style="margin-top:16px;margin-bottom:0">
+        <button id="bhRun" type="button" disabled>Run batch</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="bhLogCard"><p id="bhLog"></p></div>
+
+    <div class="card hidden" id="bhOut">
+      <div class="outhead">
+        <div class="stats" id="bhStats"></div>
+        <div class="btnrow">
+          <a id="bhDl" class="dlbtn openbtn" style="text-decoration:none;display:inline-block" href="#" download>⬇ Download ZIP</a>
+        </div>
+      </div>
+      <div class="summary" id="bhSummary"></div>
+    </div>
+  </div><!-- /batchView -->
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+
+/* Site names, filenames, flow names, and anything echoed back from a batch
+   run (homepages, expanded URLs, error text) all get interpolated into
+   innerHTML below. None of that is content pagesnap itself controls — a
+   FlowHunt flow's output or a name in someone's CSV could contain "<" or "&"
+   and quietly break the layout, or in the worst case inject markup. Escaping
+   it is cheap and was missing everywhere this pattern is used, not just in
+   the new batch view. */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+document.querySelectorAll('.chip').forEach(c =>
+  c.onclick = () => { $('url').value = c.dataset.u; });
+
+/* Width is not a crop — it is the browser window the page is rendered in, so it
+   decides which responsive breakpoint the site serves. Explain that per choice. */
+const HINTS = {
+  '1440': 'The standard desktop layout most sites are designed against. Best default.',
+  '1920': 'Wide-monitor layout. Sites with a max-width container will show more empty margin; some show extra columns.',
+  '1280': 'Smaller laptop breakpoint. Often where sidebars collapse or nav items start hiding.',
+  '390':  'Phone layout (iPhone-sized). Triggers the mobile design: hamburger nav, stacked cards, usually a much taller page.',
+};
+const hint = $('hint');
+const setHint = () => { hint.textContent = HINTS[$('width').value]; };
+$('width').onchange = setHint;
+setHint();
+
+function line(text, cls) {
+  const t = new Date().toLocaleTimeString('en-GB');
+  logEl.insertAdjacentHTML('beforeend',
+    `<span class="${cls||''}">${t}  ${cls==='err'?'':'<b>'}${text}${cls==='err'?'':'</b>'}</span>\n`);
+  logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+}
+
+async function loadGallery() {
+  const gal = $('gallery');
+  try {
+    const { files } = await (await fetch('/api/shots')).json();
+    $('galcount').textContent = files.length ? `— ${files.length}` : '';
+    if (!files.length) {
+      gal.innerHTML = '<p class="empty">Nothing captured yet. Results will appear here.</p>';
+      return;
+    }
+    gal.innerHTML = files.map((f) => {
+      const url = '/screenshots/' + encodeURIComponent(f.name);
+      const site = f.name.replace(/-\d{4}-\d{2}-\d{2}T[\d-]+\.png$/, '');
+      const mb = (f.bytes / 1024 / 1024).toFixed(1);
+      return `<div class="shotcard">
+        <a class="thumb" href="${url}" target="_blank" rel="noopener"><img loading="lazy" src="${url}" alt="${esc(site)}"></a>
+        <div class="shotmeta"><a href="${url}" target="_blank" rel="noopener" title="${esc(f.name)}">${esc(site)}</a><span>${mb}MB</span></div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    gal.innerHTML = '<p class="empty">Could not load gallery: ' + err.message + '</p>';
+  }
+}
+$('galrefresh').onclick = loadGallery;
+loadGallery();
+
+$('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const url = $('url').value.trim();
+  $('go').disabled = true;
+  $('go').innerHTML = '<span class="spin"></span> Capturing';
+  $('logCard').classList.remove('hidden');
+  $('out').classList.add('hidden');
+  logEl.textContent = '';
+  line('starting capture…');
+
+  try {
+    const res = await fetch('/api/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, width: $('width').value }),
+    });
+
+    // Stream the NDJSON progress feed as it arrives.
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const p of parts) {
+        if (!p.trim()) continue;
+        const msg = JSON.parse(p);
+        if (msg.type === 'log') line(msg.message);
+        if (msg.type === 'error') line('ERROR: ' + msg.message, 'err');
+        if (msg.type === 'done') render(msg.result);
+      }
+    }
+  } catch (err) {
+    line('ERROR: ' + err.message, 'err');
+  } finally {
+    $('go').disabled = false;
+    $('go').textContent = 'Capture';
+  }
+};
+
+function render(r) {
+  const mb = (r.bytes / 1024 / 1024).toFixed(2);
+  const secs = (r.durationMs / 1000).toFixed(1);
+  $('stats').innerHTML = `
+    <div>Size <b>${r.pageWidth} × ${r.pageHeight}px</b></div>
+    <div>Images <b>${r.images ? r.images.loaded + '/' + r.images.total : '—'}</b></div>
+    <div>Time <b>${secs}s</b></div>
+    <div>File <b>${mb} MB</b></div>
+    <div><a href="/screenshots/${r.file}" target="_blank">${r.file}</a></div>
+    ${r.capped ? '<div class="note">⚠ height cap hit — infinite scroll truncated</div>' : ''}`;
+  const href = '/screenshots/' + r.file;
+  $('img').src = href + '?t=' + Date.now();
+
+  /* Only claim the file is on the visitor's disk when it actually is. On the
+     hosted build it lives on an ephemeral container, so downloading is the
+     only way to keep it. */
+  $('saved').innerHTML = r.hosted
+    ? 'Stored on the server temporarily — <b>download it to keep a copy</b>. Container storage is wiped on redeploy.'
+    : `Already saved on this machine: <code>screenshots/${r.file}</code> — use Download PNG above to also put a copy in your Downloads.`;
+
+  /* Opens the full-resolution PNG on its own, so it can be zoomed and panned
+     rather than squeezed into the preview column. */
+  $('open').onclick = () => window.open(href, '_blank', 'noopener');
+
+  const btn = $('dl');
+  btn.disabled = false;
+  btn.textContent = '⬇ Download PNG';
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = 'Preparing…';
+    try {
+      // Fetch as a blob rather than linking straight to the file: this forces a
+      // real download with our filename instead of the browser navigating to
+      // (or inline-rendering) a 39MB PNG.
+      const res = await fetch(href);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl; a.download = r.file;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 10000);
+      btn.textContent = '✓ Downloaded';
+    } catch (err) {
+      btn.textContent = 'Failed — retry';
+      line('download failed: ' + err.message, 'err');
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 1200);
+    }
+  };
+
+  $('out').classList.remove('hidden');
+  loadGallery();
+}
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab').forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+    t.classList.add('active');
+    $('singleView').classList.toggle('hidden', t.dataset.view !== 'single');
+    $('batchView').classList.toggle('hidden', t.dataset.view !== 'batch');
+  };
+});
+
+/* ---------- batch (FlowHunt) ---------- */
+const bhLog = $('bhLog');
+function bhLine(text, cls) {
+  const t = new Date().toLocaleTimeString('en-GB');
+  bhLog.insertAdjacentHTML('beforeend',
+    `<span class="${cls||''}">${t}  ${cls==='err'?'':'<b>'}${text}${cls==='err'?'':'</b>'}</span>\n`);
+  bhLog.parentElement.scrollTop = bhLog.parentElement.scrollHeight;
+}
+
+let bhHomepages = [];
+
+/* Accepts either a bare list of URLs (one per line) or a CSV with a header
+   row containing something like "url"/"homepage"/"website" — whichever
+   column looks URL-shaped in the first data row wins if the header doesn't
+   obviously say so. */
+function parseHomepagesCsv(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  // Splits on commas outside quoted fields, so a quoted cell like
+  // "Acme, Inc." doesn't get chopped into two columns — a naive l.split(',')
+  // would, for any CSV that has more than one column.
+  const cells = (l) => {
+    const out = [];
+    let cur = '', inQuotes = false;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (c === '"') {
+        if (inQuotes && l[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (c === ',' && !inQuotes) {
+        out.push(cur.trim()); cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    out.push(cur.trim());
+    return out;
+  };
+  const looksUrl = (s) => /^https?:\/\//i.test(s) || /^[\w-]+\.[a-z]{2,}/i.test(s);
+
+  const first = cells(lines[0]);
+  let col = 0, startIdx = 0;
+  const headerCol = first.findIndex((c) => /\b(url|homepage|website|site|domain)\b/i.test(c));
+  if (headerCol >= 0) {
+    col = headerCol;
+    startIdx = 1; // skip header row
+  } else if (!looksUrl(first[0])) {
+    // First row isn't a URL and isn't a recognised header — still treat it as
+    // a header (best guess) rather than silently dropping a real URL later.
+    startIdx = 1;
+  }
+
+  const urls = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const row = cells(lines[i]);
+    let v = row[col] || row[0];
+    if (!v) continue;
+    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    urls.push(v);
+  }
+  return [...new Set(urls)];
+}
+
+$('bhCsv').onchange = async () => {
+  const file = $('bhCsv').files[0];
+  if (!file) { bhHomepages = []; $('bhCount').textContent = ''; return; }
+  const text = await file.text();
+  bhHomepages = parseHomepagesCsv(text);
+  $('bhCount').innerHTML = bhHomepages.length
+    ? `<b>${bhHomepages.length}</b> homepage url(s) found`
+    : 'No urls recognised in that file — expecting one per line, optionally with a url/homepage/website header';
+  updateRunEnabled();
+};
+
+function updateRunEnabled() {
+  const flowSelected = $('bhFlow').value && !$('bhFlow').disabled;
+  $('bhRun').disabled = !(flowSelected && bhHomepages.length);
+}
+
+$('bhLoadFlows').onclick = async () => {
+  const apiKey = $('bhApiKey').value.trim();
+  const workspaceId = $('bhWorkspace').value.trim();
+  if (!apiKey) { alert('Paste your FlowHunt API key first.'); return; }
+  const btn = $('bhLoadFlows');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/flowhunt/flows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, workspaceId: workspaceId || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    const sel = $('bhFlow');
+    if (!data.flows?.length) {
+      sel.innerHTML = '<option>No flows found on this account</option>';
+      sel.disabled = true;
+    } else {
+      sel.innerHTML = data.flows.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('');
+      sel.disabled = false;
+    }
+  } catch (err) {
+    alert('Could not load flows: ' + err.message);
+    $('bhFlow').innerHTML = '<option>Load flows first</option>';
+    $('bhFlow').disabled = true;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load flows';
+    updateRunEnabled();
+  }
+};
+$('bhFlow').onchange = updateRunEnabled;
+
+$('bhRun').onclick = async () => {
+  const apiKey = $('bhApiKey').value.trim();
+  const workspaceId = $('bhWorkspace').value.trim();
+  const flowId = $('bhFlow').value;
+  if (!apiKey || !flowId || !bhHomepages.length) return;
+
+  const btn = $('bhRun');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Running batch';
+  $('bhLogCard').classList.remove('hidden');
+  $('bhOut').classList.add('hidden');
+  bhLog.textContent = '';
+  bhLine(`starting batch — ${bhHomepages.length} homepage(s)…`);
+
+  try {
+    const res = await fetch('/api/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, flowId, urls: bhHomepages, workspaceId: workspaceId || undefined }),
+    });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const p of parts) {
+        if (!p.trim()) continue;
+        const msg = JSON.parse(p);
+        if (msg.type === 'log') bhLine(msg.message);
+        if (msg.type === 'error') bhLine('ERROR: ' + msg.message, 'err');
+        if (msg.type === 'done') bhRender(msg.result);
+      }
+    }
+  } catch (err) {
+    bhLine('ERROR: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run batch';
+  }
+};
+
+function bhRender(r) {
+  const mb = (r.bytes / 1024 / 1024).toFixed(2);
+  $('bhStats').innerHTML = `
+    <div>Homepages <b>${r.totalHomepages}</b></div>
+    <div>Screenshots <b>${r.totalShots}</b></div>
+    <div>ZIP <b>${mb} MB</b></div>`;
+  $('bhDl').href = '/batches/' + r.zipFile;
+  $('bhDl').textContent = '⬇ Download ' + r.zipFile;
+
+  $('bhSummary').innerHTML = r.summary.map((s) => {
+    const shotList = s.shots.map((sh) =>
+      sh.file
+        ? `<li><a href="/screenshots/${esc(sh.file)}" target="_blank" rel="noopener">${esc(sh.url)}</a></li>`
+        : `<li class="err">${esc(sh.url)} — ${esc(sh.error)}</li>`
+    ).join('');
+    const label = s.error
+      ? `${esc(s.homepage)} <span class="n err">— ${esc(s.error)}</span>`
+      : `${esc(s.homepage)} <span class="n">— ${s.shots.length} screenshot(s)</span>`;
+    return `<details><summary>${label}</summary><ul>${shotList}</ul></details>`;
+  }).join('');
+
+  $('bhOut').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
