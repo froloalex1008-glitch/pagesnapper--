@@ -9,6 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
@@ -181,6 +182,19 @@ console.log('\nfull batch');
 /* Imported late and with a stub in place of the real FlowHunt client, so no
    API key is needed and the test is deterministic. */
 const stubPath = path.join(__dirname, '.flowhunt.stub.mjs');
+
+/* Remove the scratch modules however this process ends — a failing assertion,
+   a Ctrl-C, an unhandled rejection. The tidy-up at the bottom of this file
+   only runs when everything passes, and one interrupted run left both stubs on
+   disk long enough for them to be committed to the repo. Synchronous, because
+   'exit' handlers cannot await. */
+process.on('exit', () => {
+  for (const f of ['.flowhunt.stub.mjs', '.batch.stub.mjs']) {
+    try { fsSync.rmSync(path.join(__dirname, f), { force: true }); } catch { /* nothing to clean */ }
+  }
+});
+process.on('SIGINT', () => process.exit(130));
+
 await fs.writeFile(stubPath, `
 export async function listFlows(){ return [{ id:'f1', name:'F' }]; }
 const H = ${JSON.stringify(H)};

@@ -7,6 +7,10 @@ screenshots/*.jpg
 # and those would otherwise be picked up by the next `git add .`.
 batches/
 *.zip
+# Scratch modules the test suite writes to stub out FlowHunt, then deletes on
+# the way out. They only survive a run that was interrupted, and they are
+# regenerated every time — never worth committing.
+test/.*.stub.mjs
 *.log
 .DS_Store
 .env
