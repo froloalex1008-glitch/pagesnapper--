@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ExcelJS from 'exceljs';
 import { openZip } from './unzip.js';
 import { startTestSite } from './testsite.js';
@@ -209,13 +209,20 @@ export async function runFlow(){ return JSON.stringify({ outputs:[JSON.stringify
 export { parseAgentResult, extractUrls } from '../flowhunt.js';
 `, 'utf8');
 
+/* Module specifiers must be file:// URLs, not filesystem paths. On Linux the
+   two look similar enough that a bare absolute path happens to work; on
+   Windows it is "C:\..." and Node rejects it outright as an unknown URL scheme
+   ("Received protocol 'c:'"), which is where this first showed up. Backslashes
+   would also read as escape characters inside the generated source. */
+const asSpecifier = (p) => JSON.stringify(pathToFileURL(p).href);
+
 const batchSrc = (await fs.readFile(path.join(__dirname, '..', 'batch.js'), 'utf8'))
-  .replace("from './flowhunt.js'", `from ${JSON.stringify(stubPath)}`)
-  .replace("from './capture.js'", `from ${JSON.stringify(path.join(__dirname, '..', 'capture.js'))}`)
-  .replace("from './discover.js'", `from ${JSON.stringify(path.join(__dirname, '..', 'discover.js'))}`);
+  .replace("from './flowhunt.js'", `from ${asSpecifier(stubPath)}`)
+  .replace("from './capture.js'", `from ${asSpecifier(path.join(__dirname, '..', 'capture.js'))}`)
+  .replace("from './discover.js'", `from ${asSpecifier(path.join(__dirname, '..', 'discover.js'))}`);
 const batchStub = path.join(__dirname, '.batch.stub.mjs');
 await fs.writeFile(batchStub, batchSrc, 'utf8');
-const { runBatch } = await import(batchStub);
+const { runBatch } = await import(pathToFileURL(batchStub).href);
 
 const COMPANIES = [
   'TESTCO KFT, HU, 7219, localhost, HU1',
