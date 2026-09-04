@@ -49,6 +49,15 @@ const CONSENT_TEXTS_REJECT = [
   /^\s*(respinge|refuz)/i,                                   // ro
   /^\s*(zavrni|zavrne)/i,                                    // sl
   /^\s*(odm[íi]tnout v[šs]e)/i,                              // cs
+  /^\s*(elutas[íi]t|nem fogadom el|csak a sz[üu]ks[ée]ges)/i, // hu
+  /^\s*(weigeren|alles weigeren|alleen noodzakelijke)/i,     // nl
+  /^\s*(afvis|afvis alle|kun n[øo]dvendige)/i,               // da
+  /^\s*(avvisa|neka|endast n[öo]dv[äa]ndiga)/i,              // sv
+  /^\s*(hylk[äa]|vain v[äa]ltt[äa]m[äa]tt[öo]m[äa]t)/i,      // fi
+  /^\s*(keeldu|ainult vajalikud)/i,                          // et
+  /^\s*(atmesti|tik b[ūu]tinus)/i,                           // lt
+  /^\s*(отхвърл|откажи|само необходим)/i,                    // bg
+  /^\s*(odbij|odbaci|samo nu[žz]ni)/i,                       // hr
 ];
 
 const CONSENT_TEXTS_ACCEPT = [
@@ -65,6 +74,21 @@ const CONSENT_TEXTS_ACCEPT = [
   /^\s*(akceptuj|zgadzam si[ęe]|zgoda)/i,                    // pl
   /^\s*(accept[ăa]|de acord)/i,                              // ro
   /^\s*(sprejmi|se strinjam)/i,                              // sl
+  /* Hungarian was missing from both tiers entirely, and it is not an exotic
+     case for this client: adexgo.hu showed "Elfogadom / Elutasítom", nothing
+     matched, the log said "no consent dialog found", and the banner sat across
+     the bottom of every screenshot of that company. Three of the eight test
+     companies were Hungarian. The rest of this block closes the same hole for
+     the other EU languages the list had never covered. */
+  /^\s*(elfogadom|elfogad|[öo]sszes elfogad|rendben)/i,      // hu
+  /^\s*(accepteren|alles accepteren|akkoord)/i,              // nl
+  /^\s*(accept[eé]r|tillad alle)/i,                          // da
+  /^\s*(acceptera|godk[äa]nn)/i,                             // sv
+  /^\s*(hyv[äa]ksy|salli kaikki)/i,                          // fi
+  /^\s*(n[õo]ustun|luba k[õo]ik)/i,                          // et
+  /^\s*(sutinku|priimti|leisti visus)/i,                     // lt
+  /^\s*(приемам|съгласен|приеми)/i,                          // bg
+  /^\s*(prihva[ćc]am|prihvati)/i,                            // hr
 ];
 
 /* Promotional modals / newsletter popups / lightboxes. These are NOT consent

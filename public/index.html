@@ -223,6 +223,16 @@
       </div>
       <p class="filecount" id="bhCount"></p>
 
+      <div class="field" style="margin-top:14px;margin-bottom:6px">
+        <label for="bhMaxProducts">Product pages per company (0 = every one found)</label>
+        <input id="bhMaxProducts" type="number" min="0" step="1" value="0" style="max-width:120px">
+        <p class="filecount" style="margin-top:6px">
+          Every product page is captured by default. Each one costs roughly
+          20–30s and 1.5–2.5&nbsp;MB, so a company with a long catalogue can
+          take several minutes on its own — set a number here to limit it.
+        </p>
+      </div>
+
       <!-- A run that was interrupted is continued by simply running the same
            CSV again; this is the escape hatch for when you want it redone. -->
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
@@ -576,6 +586,7 @@ $('bhRun').onclick = async () => {
         apiKey, flowId, urls: bhHomepages,
         workspaceId: workspaceId || undefined,
         fresh: $('bhFresh')?.checked || false,
+        maxProducts: $('bhMaxProducts')?.value ?? undefined,
       }),
     });
     const reader = res.body.getReader();

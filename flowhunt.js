@@ -134,9 +134,17 @@ export function extractUrls(result) {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) return uniq(parsed.filter((u) => typeof u === 'string'));
   } catch { /* not JSON — fall through to text scanning */ }
-  // Backslash is excluded from the match itself too, so an escaped URL ends at
-  // the escape rather than swallowing it and whatever follows.
-  const matches = text.match(/https?:\/\/[^\s,"'\]\)\\]+/g) || [];
+  /* Backslash is excluded from the match itself too, so an escaped URL ends at
+     the escape rather than swallowing it and whatever follows.
+
+     The pipe matters just as much. The agent separates several URLs in one
+     field with "|", and does not always put spaces around it — a live run sent
+     "…/trapianto/…/|https://www.aferetica.com/critical-care/…" and, with "|"
+     still allowed inside a match, both URLs were read as ONE address. The
+     browser then percent-encoded the pipe, requested that nonsense path, and
+     got a 403 that looked like bot protection. Angle brackets are excluded for
+     the same reason: markdown autolinks wrap URLs in <>. */
+  const matches = text.match(/https?:\/\/[^\s,"'\]\)\\|<>]+/g) || [];
   return uniq(matches);
 }
 

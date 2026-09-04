@@ -21,7 +21,7 @@ import archiver from 'archiver';
 import ExcelJS from 'exceljs';
 import { capture } from './capture.js';
 import { runFlow, parseAgentResult } from './flowhunt.js';
-import { discoverProductLinks } from './discover.js';
+import { discoverProductLinks, neverAProduct } from './discover.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const BATCH_DIR = process.env.BATCH_DIR || path.join(__dirname, 'batches');
@@ -44,9 +44,17 @@ const LINK_SEP = '; ';
    agent alone cannot deliver that — in a live 8-company run it named one
    services URL for seven companies and two for the eighth — so the product
    list is the agent's URLs first (they are vetted) followed by whatever
-   reading the company's own homepage navigation turns up. Capped, because a
-   catalogue site would otherwise run for half an hour on its own. */
-const MAX_PRODUCTS = Number(process.env.MAX_PRODUCTS || 5);
+   reading the company's own homepage navigation turns up.
+
+   Uncapped by default, because KPMG asked for every product page and a cap
+   silently answers a different question — a company with 23 service pages
+   would otherwise be documented as having 5. Set MAX_PRODUCTS, or the field in
+   the UI, to put a limit back on for a particular run.
+
+   The cost is real and worth stating: each extra page is roughly 20-30 seconds
+   and 1.5-2.5 MB, so one catalogue-heavy company can take ten minutes on its
+   own and the total for a long list becomes hard to predict in advance. */
+const DEFAULT_MAX_PRODUCTS = Number(process.env.MAX_PRODUCTS || 0);
 
 /* Company strings arrive as a whole CSV row — "ACCELSIORS KUTATASSZERVEZO ...,
    HU, 7219, www.accelsiors.com, HU13483498" — including commas, slashes and
@@ -130,8 +138,13 @@ export async function runBatch({
   apiKey, flowId, companies, width, workspaceId,
   quality = 82,
   fresh = false,
+  maxProducts = DEFAULT_MAX_PRODUCTS,
   onLog = () => {}, isAborted = () => false,
 }) {
+  /* 0 (or anything not a positive number) means no limit. Infinity rather than
+     a large integer so the "capped" reporting below can never fire on it. */
+  const MAX_PRODUCTS = Number(maxProducts) > 0 ? Number(maxProducts) : Infinity;
+
   await fs.mkdir(BATCH_DIR, { recursive: true });
 
   /* ── Resume ───────────────────────────────────────────────────────────────
@@ -148,7 +161,11 @@ export async function runBatch({
      than half-recorded. Editing the CSV changes the id and starts a clean run,
      which is the behaviour you want: a different input is a different job. */
   const runId = crypto.createHash('sha1')
-    .update(JSON.stringify({ companies, width, quality, flowId }))
+    /* maxProducts is part of the identity: raising the cap and re-running must
+       start a new run, not resume one whose finished companies were captured
+       under the old, smaller limit — those rows would silently keep their
+       short product lists while later ones got the longer treatment. */
+    .update(JSON.stringify({ companies, width, quality, flowId, maxProducts: MAX_PRODUCTS }))
     .digest('hex').slice(0, 12);
   const workDir = path.join(BATCH_DIR, `run-${runId}`);
   const exportDir = path.join(workDir, 'export');
@@ -273,14 +290,29 @@ export async function runBatch({
          KPMG deliverable ends up containing screenshots of a company nobody
          asked about, with no way to spot which. Not an error — the agent may
          well be right — so it is recorded, not failed. */
+      /* Checked across EVERY url the agent returned, not just the homepage.
+         A live run made the reason plain: for "AG MOTORS SP. Z O.O. …
+         www.bike4u.pl" the agent reported homepage_url as "failed to capture"
+         and then gave about/services pages on www.bike4u.it — an unrelated
+         Italian bike shop. Because the homepage field held no url at all,
+         a homepage-only check saw nothing to compare and stayed silent, and
+         two screenshots of the wrong company went into the spreadsheet looking
+         exactly like every correct row. */
       const wantDomain = domainFromCompany(company);
-      const gotDomain = (() => {
-        try { return new URL(parsed.urls.homepage).hostname.toLowerCase().replace(/^www\./, ''); }
+      const hostOf = (u) => {
+        try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); }
         catch { return ''; }
-      })();
-      if (wantDomain && gotDomain && !sameSite(wantDomain, gotDomain)) {
-        onLog(`  NOTE: input names ${wantDomain} but the agent used ${gotDomain}`);
-        warn(`input domain ${wantDomain}, agent used ${gotDomain}`);
+      };
+      if (wantDomain) {
+        const used = [...new Set(
+          [parsed.urls.homepage, parsed.urls.aboutUs, ...(parsed.urlOptions?.services || [])]
+            .map(hostOf).filter(Boolean)
+        )];
+        const wrong = used.filter((h) => !sameSite(wantDomain, h));
+        if (wrong.length) {
+          onLog(`  NOTE: input names ${wantDomain} but the agent used ${wrong.join(', ')}`);
+          warn(`input domain ${wantDomain}, agent used ${wrong.join(', ')}`);
+        }
       }
 
       /* The agent explains a missing page in the url field itself — most
@@ -354,6 +386,17 @@ export async function runBatch({
       // Below ~85% is where missing images start being obvious in the picture.
       if (total >= 5 && loaded / total < 0.85) {
         warn(`${label}: only ${loaded}/${total} images loaded`);
+      }
+
+      /* A page that never grew past one viewport and contains no images at all
+         is almost certainly not the page anyone wanted: an error page, a
+         redirect that landed nowhere, or content that failed to render. It is
+         invisible in the spreadsheet, where the row looks complete and the
+         link resolves. A live run captured adexgo.hu/rolunk/ at exactly 900px
+         and 0.03 MB — a blank card where the About page should have been —
+         and nothing in the output said so. */
+      if (shot?.pageHeight && shot.pageHeight <= 1000 && total === 0) {
+        warn(`${label}: page looks empty (${shot.pageHeight}px, no images) — worth checking by hand`);
       }
       if (shot?.placeholders > 0) {
         warn(`${label}: ${shot.placeholders} image(s) may be blank (lazy-load not recognised)`);
@@ -478,7 +521,17 @@ export async function runBatch({
       const fromAgent = parsed.urlOptions?.services?.length
         ? parsed.urlOptions.services
         : [parsed.urls.services].filter(Boolean);
-      for (const u of fromAgent) consider(u);
+      for (const u of fromAgent) {
+        /* The agent is trusted about WHICH service page a company has, but a
+           leadership or contact page is not one whatever it says — and one
+           came through as product_2 in a live run. */
+        if (neverAProduct(u)) {
+          onLog(`  skipping ${u} — not a product page`);
+          warn(`agent offered ${u} as a product page; skipped`);
+          continue;
+        }
+        consider(u);
+      }
       const agentCount = productUrls.length;
 
       /* Only go to the site when the agent has not already filled the quota.
@@ -488,6 +541,12 @@ export async function runBatch({
       if (productUrls.length < MAX_PRODUCTS && parsed.urls.homepage) {
         const discovered = await discoverProductLinks(parsed.urls.homepage, {
           limit: MAX_PRODUCTS * 3,   // over-fetch: many will collide with what we have
+          /* The agent's own product URLs, handed over so discovery can find
+             their siblings. Without these, a site that names product pages
+             after the products (admatis.com) yields nothing from the site and
+             the row is left with whichever few the agent happened to return
+             that run — a different set every time. */
+          seeds: productUrls,
           onLog: (m) => onLog(`  ${m}`),
         });
         siteFound = discovered.found;
@@ -496,6 +555,12 @@ export async function runBatch({
 
       if (productUrls.length) {
         onLog(`  ${productUrls.length} product page(s): ${agentCount} from the agent, ${productUrls.length - agentCount} from the site`);
+      }
+      /* Uncapped runs are the norm now, so a company with a very long product
+         list is no longer stopped — but it does deserve a heads-up in the log,
+         since it is where an unexpectedly long run comes from. */
+      if (MAX_PRODUCTS === Infinity && productUrls.length >= 20) {
+        onLog(`  NOTE: ${productUrls.length} product pages — this company alone will take roughly ${Math.round(productUrls.length * 25 / 60)} minute(s)`);
       }
 
       /* A cap that says nothing is worse than no cap: five screenshots for a

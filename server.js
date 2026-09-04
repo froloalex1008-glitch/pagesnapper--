@@ -145,7 +145,7 @@ app.post('/api/flowhunt/flows', async (req, res) => {
    every homepage via the chosen flow, screenshots every URL that comes back,
    and finishes with a link to the zipped result. */
 app.post('/api/batch', async (req, res) => {
-  const { apiKey, flowId, urls, width, workspaceId, fresh } = req.body || {};
+  const { apiKey, flowId, urls, width, workspaceId, fresh, maxProducts } = req.body || {};
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Cache-Control', 'no-cache');
 
@@ -182,6 +182,8 @@ app.post('/api/batch', async (req, res) => {
          the whole point of resume. Set only when the user asks for a clean
          run from the UI. */
       fresh: Boolean(fresh),
+      /* Undefined leaves batch.js on its own default; 0 means no limit. */
+      maxProducts: maxProducts === undefined || maxProducts === '' ? undefined : Number(maxProducts),
       onLog: (message) => send({ type: 'log', message }),
       isAborted: () => closed,
     });
