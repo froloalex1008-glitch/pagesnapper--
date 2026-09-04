@@ -1,6 +1,11 @@
 node_modules/
 screenshots/*.png
+screenshots/*.jpg
 !screenshots/.gitkeep
+# Batch output. *.zip already covers a finished run, but a run that is
+# interrupted leaves batches/batch-<stamp>/ behind full of loose screenshots,
+# and those would otherwise be picked up by the next `git add .`.
+batches/
 *.zip
 *.log
 .DS_Store

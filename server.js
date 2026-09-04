@@ -161,9 +161,13 @@ app.post('/api/batch', async (req, res) => {
   res.on('close', () => { closed = true; });
   const send = (obj) => { if (!closed && !res.writableEnded) res.write(JSON.stringify(obj) + '\n'); };
 
-  const homepages = Array.isArray(urls) ? urls.map((u) => String(u).trim()).filter(Boolean) : [];
-  if (!apiKey || !flowId || !homepages.length) {
-    send({ type: 'error', message: 'Missing apiKey, flowId, or urls' });
+  /* Each entry is a whole company row from the CSV ("ACME LTD, DE, 7219,
+     www.acme.com, DE123456"), not a bare URL — the agent accepts a business
+     name or a URL and finds the site itself, and the folder each company's
+     screenshots land in is named from this string. */
+  const companies = Array.isArray(urls) ? urls.map((u) => String(u).trim()).filter(Boolean) : [];
+  if (!apiKey || !flowId || !companies.length) {
+    send({ type: 'error', message: 'Missing apiKey, flowId, or company rows' });
     return res.end();
   }
 
@@ -171,7 +175,7 @@ app.post('/api/batch', async (req, res) => {
     const result = await runBatch({
       apiKey,
       flowId,
-      homepages,
+      companies,
       width: Number(width) || 1440,
       workspaceId: workspaceId || undefined,
       onLog: (message) => send({ type: 'log', message }),

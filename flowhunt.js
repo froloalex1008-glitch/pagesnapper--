@@ -74,7 +74,12 @@ export async function invokeFlow(apiKey, flowId, humanInput, { workspaceId } = {
 }
 
 /** Polls a flow task until it finishes, fails, or times out. */
-export async function pollTask(apiKey, flowId, taskId, { workspaceId, timeoutMs = 120000, intervalMs = 1500 } = {}) {
+/* 5 minutes, not 2. One company took ~40s in testing, but the agent does a
+   Google search, fetches several pages and then summarises them, so a slow or
+   large site can run well past two minutes. On a 181-company batch a timeout
+   that is merely "usually enough" turns into a handful of lost rows, and
+   waiting longer costs nothing when the flow is quick. */
+export async function pollTask(apiKey, flowId, taskId, { workspaceId, timeoutMs = 300000, intervalMs = 1500 } = {}) {
   const url = new URL(`/v2/flows/${encodeURIComponent(flowId)}/${encodeURIComponent(taskId)}`, BASE);
   if (workspaceId) url.searchParams.set('workspace_id', workspaceId);
   const deadline = Date.now() + timeoutMs;
@@ -133,4 +138,91 @@ export function extractUrls(result) {
   // the escape rather than swallowing it and whatever follows.
   const matches = text.match(/https?:\/\/[^\s,"'\]\)\\]+/g) || [];
   return uniq(matches);
+}
+
+/* The agent's reply is a fixed structure (see its system message): a status
+ * code, a business type, a multi-sentence summary under "Reasoning", then a
+ * urls list in a fixed order — homepage, about us, services/products. KPMG's
+ * requested output needs each of those in its own spreadsheet column, and each
+ * screenshot filed under the page it came from, so a flat list of URLs isn't
+ * enough any more.
+ *
+ * Everything here is best-effort: a heading may be missing, a page may be
+ * "not available", the model may reword a label. Nothing throws — a field that
+ * can't be found comes back empty and the caller decides what that means.
+ */
+export function parseAgentResult(result) {
+  const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+
+  /* Headings arrive as "**Status Code**: x", "Status Code: x", or "- status: x"
+     depending on how the model formats that run, so match the label loosely and
+     take the rest of the line. */
+  const field = (label) => {
+    const re = new RegExp(`^[\\s*\\-#>]*\\**\\s*${label}\\s*\\**\\s*[:\\-]\\s*(.+)$`, 'im');
+    const m = text.match(re);
+    return m ? m[1].replace(/\*+/g, '').trim() : '';
+  };
+
+  const statusRaw = field('status[ _]?code') || field('status');
+  const status = /verified/i.test(statusRaw) && !/unverified/i.test(statusRaw) ? 'Verified'
+    : /unverified/i.test(statusRaw) ? 'Unverified'
+    : /fail/i.test(statusRaw) ? 'Failed'
+    : statusRaw;
+
+  /* The summary runs for several sentences and ends where the urls list starts,
+     so take everything between the two headings rather than a single line. */
+  let reasoning = '';
+  /* End the block at the next heading or at end-of-input. JS has no \z, and
+     using it literally matches the letter "z" — which silently cut the summary
+     off at the first word containing one ("Organi|zation"). */
+  const reasoningBlock = text.match(
+    /^[\s*\-#>]*\**\s*(?:reasoning|business[_ ]summari[sz]ation|summary)\s*\**\s*[:\-]\s*([\s\S]*?)(?=^[\s*\-#>]*\**\s*(?:urls?|status|business[_ ]type)\b|(?![\s\S]))/im
+  );
+  if (reasoningBlock) reasoning = reasoningBlock[1].replace(/\*+/g, '').trim();
+  if (!reasoning) reasoning = field('reasoning');
+
+  const urls = extractUrls(text);
+
+  /* Prefer matching a URL to its page by the words around it — the model labels
+     them ("about us page URL: ..."), and that survives a missing entry, which
+     position alone does not: if a site has no About page, the services URL
+     would otherwise silently land in the about_us column. Position is the
+     fallback, in the order the system message specifies. */
+  /* Returns the URL on the labelled line, '' if that line exists but names no
+     URL ("about us page URL: not available"), or null if no such line at all.
+     The distinction matters: an explicit "not available" is an answer, and must
+     NOT fall through to the positional guess — otherwise a site with no About
+     page gets its services URL filed under about_us, which looks like real data
+     and is wrong. Only a genuinely absent label falls back to position. */
+  const near = (labels) => {
+    let sawLabel = false;
+    for (const line of text.split(/\r?\n/)) {
+      if (!labels.test(line)) continue;
+      sawLabel = true;
+      const found = extractUrls(line);
+      if (found.length) return found[0];
+    }
+    return sawLabel ? '' : null;
+  };
+
+  const pick = (labelled, positional) => (labelled === null ? (positional || '') : labelled);
+
+  const homepage = pick(near(/home\s*page|homepage/i), urls[0]);
+  const aboutUs = pick(
+    near(/about\s*[-_ ]?us|about\b/i),
+    urls[1] !== homepage ? urls[1] : ''
+  );
+  const services = pick(
+    near(/services?|products?|goods|shop|catalog|solutions|offerings/i),
+    urls.find((u) => u !== homepage && u !== aboutUs)
+  );
+
+  return {
+    status,
+    businessType: field('business[_ ]type[_ ]classification') || field('business[_ ]type'),
+    reasoning,
+    urls: { homepage, aboutUs, services },
+    allUrls: urls,
+    raw: text,
+  };
 }

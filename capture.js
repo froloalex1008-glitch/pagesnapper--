@@ -112,13 +112,23 @@ export async function capture(opts = {}) {
     maxScrollRounds = 60,
     maxPageHeight = 60000,
     navTimeout = 60000,
+    /* 'png' (lossless, the single-capture default) or 'jpeg'. Batch runs use
+       jpeg: a few hundred full-page PNGs is a several-GB download, and at this
+       quality the difference is invisible when reviewing page content. */
+    format = 'png',
+    quality = 82,
+    /* Batch runs name their own files (companyfolder/homepage.jpg) rather than
+       taking the host-and-timestamp default. */
+    fileName = null,
+    outDir = null,
     onLog = () => {},
   } = opts;
 
   const target = normaliseUrl(url);
   const log = (msg) => { onLog(msg); console.log('  ' + msg); };
 
-  await fs.mkdir(SHOTS_DIR, { recursive: true });
+  const destDir = outDir || SHOTS_DIR;
+  await fs.mkdir(destDir, { recursive: true });
 
   const browser = await chromium.launch({
     headless: true,
@@ -392,8 +402,8 @@ export async function capture(opts = {}) {
     });
 
     /* 10 ── Capture. */
-    const file = buildFilename(target);
-    const outPath = path.join(SHOTS_DIR, file);
+    const file = fileName || buildFilename(target, format);
+    const outPath = path.join(destDir, file);
     const dims = await page.evaluate(() => ({
       w: document.documentElement.scrollWidth,
       h: document.documentElement.scrollHeight,
@@ -408,27 +418,61 @@ export async function capture(opts = {}) {
     /* PAGESNAP_MAX_SCALE lets a memory-capped host force 1x, which quarters the
        pixels sharp has to composite. Tall pages step down regardless. */
     const scaleCap = Number(process.env.PAGESNAP_MAX_SCALE || requestedDsf);
-    const safeScale = Math.min(requestedDsf, scaleCap, dims.h > 20000 ? 1 : requestedDsf);
+    let safeScale = Math.min(requestedDsf, scaleCap, dims.h > 20000 ? 1 : requestedDsf);
     if (safeScale !== requestedDsf) {
       log(`page is ${dims.h}px tall — capturing at ${safeScale}x instead of ${requestedDsf}x to stay within memory`);
     }
+
+    /* JPEG cannot store a dimension above 65535px — a hard format limit, not a
+       memory one, and libjpeg simply throws. PNG has no such ceiling, which is
+       why this never mattered until batch runs started emitting JPEG. Note
+       maxPageHeight only stops infinite scroll from growing the page further;
+       it does not shrink a page that is genuinely this tall, so dims.h can
+       still land above the limit. Drop the scale first, and if even 1x doesn't
+       fit, emit PNG instead — a slightly larger file beats a failed row with an
+       error nobody can act on. */
+    let outFormat = format;
+    let outFile = file;
+    let outFullPath = outPath;
+    if (outFormat === 'jpeg') {
+      const JPEG_MAX = 65500; // a little under 65535 for rounding headroom
+      if (dims.h * safeScale > JPEG_MAX) {
+        const fitted = Math.max(1, Math.floor(JPEG_MAX / dims.h));
+        if (dims.h <= JPEG_MAX) {
+          safeScale = Math.min(safeScale, fitted);
+          log(`page is ${dims.h}px tall — capping at ${safeScale}x so the jpeg stays under ${JPEG_MAX}px`);
+        } else {
+          outFormat = 'png';
+          outFile = file.replace(/\.jpe?g$/i, '.png');
+          outFullPath = path.join(destDir, outFile);
+          safeScale = 1;
+          log(`page is ${dims.h}px tall — beyond jpeg's ${JPEG_MAX}px limit, saving as PNG instead`);
+        }
+      }
+    }
     log(`capturing ${dims.h}px in ${Math.ceil(dims.h / height)} slice(s) at ${safeScale}x`);
     const stitched = await scrollAndStitch(page, {
-      outPath,
+      outPath: outFullPath,
       viewportHeight: height,
       scale: safeScale,
+      format: outFormat,
+      quality,
       onLog: () => {},
     });
     log(`stitched ${stitched.slices} slice(s) → ${stitched.width}x${stitched.height}px`);
 
-    const { size } = await fs.stat(outPath);
-    log(`saved ${file} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+    const { size } = await fs.stat(outFullPath);
+    log(`saved ${outFile} (${(size / 1024 / 1024).toFixed(2)} MB)`);
 
     return {
       ok: true,
       url: target,
-      file,
-      path: outPath,
+      // The actual name written — may differ from the requested one if a very
+      // tall page had to fall back from jpeg to png, so callers that record a
+      // path (the batch spreadsheet) must use this rather than assuming.
+      file: outFile,
+      path: outFullPath,
+      format: outFormat,
       pageWidth: dims.w,
       pageHeight: dims.h,
       httpStatus,
@@ -473,10 +517,10 @@ function normaliseUrl(raw) {
   return u.toString();
 }
 
-function buildFilename(url) {
+function buildFilename(url, format = 'png') {
   const host = new URL(url).hostname.replace(/^www\./, '').replace(/[^a-z0-9.-]/gi, '-');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  return `${host}-${ts}.png`;
+  return `${host}-${ts}.${format === 'jpeg' ? 'jpg' : 'png'}`;
 }
 
 /* Scans a set of button-like elements ONCE, fetching each one's href/text with

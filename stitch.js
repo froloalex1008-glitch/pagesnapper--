@@ -18,11 +18,14 @@ import path from 'node:path';
  *  - The final slice usually overlaps the previous one (the page rarely divides
  *    evenly), so it is cropped to just the remainder.
  */
-export async function scrollAndStitch(page, { outPath, viewportHeight, scale = 1, onLog = () => {} }) {
+export async function scrollAndStitch(page, {
+  outPath, viewportHeight, scale = 1, format = 'png', quality = 82, onLog = () => {},
+}) {
   const totalHeight = await page.evaluate(() => document.documentElement.scrollHeight);
   const width = await page.evaluate(() => document.documentElement.clientWidth);
   const slices = [];
   let hiddenChrome = false;
+  let totalHiddenEls = 0;
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pagesnap-'));
   try {
 
@@ -37,12 +40,21 @@ export async function scrollAndStitch(page, { outPath, viewportHeight, scale = 1
          single scan at scrollY=0 misses them and they repeat down the image.
          The first slice keeps them — that's the page's genuine top. */
       if (hiddenChrome) {
-        await page.evaluate(() => {
+        /* Diagnostic only, added after cemps.ro showed a header repeating at every
+           slice boundary despite this logic existing. Without a count, there was no
+           way to tell "this only checks position:fixed/sticky, and the header uses
+           neither" apart from reading source — same blind spot SLOW_STEP_MS fixed
+           for timing. A >0 count here on every slice (not just occasionally, for a
+           genuinely late-appearing sticky nav) means something IS being caught but
+           not enough; a 0 on every slice for a page that visibly repeats its header
+           means the check itself doesn't recognize how that header is positioned. */
+        const hiddenNow = await page.evaluate(() => {
           /* Only elements currently intersecting the viewport can appear in this
              slice, so there is no point styling the whole document. Scanning every
              element instead cost ~10k getComputedStyle calls per slice on a news
              homepage, which made tall mobile pages take minutes. */
           const vh = window.innerHeight;
+          let n = 0;
           for (const el of document.querySelectorAll('body *')) {
             if (el.hasAttribute('data-pagesnap-hide')) continue;
             const r = el.getBoundingClientRect();
@@ -50,9 +62,15 @@ export async function scrollAndStitch(page, { outPath, viewportHeight, scale = 1
             const s = getComputedStyle(el);
             if (s.position === 'fixed' || s.position === 'sticky') {
               el.setAttribute('data-pagesnap-hide', '');
+              n++;
             }
           }
+          return n;
         });
+        if (hiddenNow) {
+          totalHiddenEls += hiddenNow;
+          onLog(`slice ${slices.length + 1}: hid ${hiddenNow} more fixed/sticky element(s)`);
+        }
       } else {
         await page.addStyleTag({
           content: `[data-pagesnap-hide]{visibility:hidden !important}`,
@@ -82,11 +100,17 @@ export async function scrollAndStitch(page, { outPath, viewportHeight, scale = 1
       onLog(`slice ${slices.length} captured at y=${y}`);
     }
 
+    onLog(
+      totalHiddenEls
+        ? `hid ${totalHiddenEls} fixed/sticky element(s) total across ${slices.length - 1} later slice(s)`
+        : `no fixed/sticky elements found on slices after the first — if chrome still repeats in the final image, it isn't using position:fixed/sticky and this check doesn't catch it`
+    );
+
     // Compose every slice onto one tall canvas.
     const px = (n) => Math.round(n * scale);
     const composites = slices.map((s) => ({ input: s.file, top: px(s.top), left: 0 }));
 
-    await sharp({
+    const canvas = sharp({
       create: {
         width: px(width),
         height: px(totalHeight),
@@ -94,10 +118,19 @@ export async function scrollAndStitch(page, { outPath, viewportHeight, scale = 1
         background: { r: 255, g: 255, b: 255, alpha: 1 },
       },
       limitInputPixels: false,
-    })
-      .composite(composites)
-      .png({ compressionLevel: 6 })
-      .toFile(outPath);
+    }).composite(composites);
+
+    /* PNG is lossless and right for a single capture you may zoom into, but a
+       full-page shot of a real site runs 5-7MB — and a batch of a few hundred
+       is a download nobody wants to sit through. JPEG at ~82% is visually
+       indistinguishable for reviewing page content and lands roughly an order
+       of magnitude smaller. The canvas background is already opaque white, so
+       dropping the alpha channel loses nothing. */
+    if (format === 'jpeg') {
+      await canvas.jpeg({ quality, mozjpeg: true, chromaSubsampling: '4:4:4' }).toFile(outPath);
+    } else {
+      await canvas.png({ compressionLevel: 6 }).toFile(outPath);
+    }
 
     return { width, height: totalHeight, slices: slices.length };
   } finally {

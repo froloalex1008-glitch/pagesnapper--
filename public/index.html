@@ -197,9 +197,10 @@
   <div id="batchView" class="hidden">
     <div class="card">
       <p class="hint" style="margin-top:0">
-        Give it a FlowHunt flow that takes a homepage URL and returns a list of URLs to screenshot,
-        plus a CSV of homepages. It runs the flow on each homepage, screenshots everything the flow
-        returns, and bundles it all into one ZIP.
+        Give it a FlowHunt flow and a CSV of companies (one per line — name and/or website, extra
+        columns are fine). For each company the flow finds the homepage, about-us and services
+        pages; each is captured full-page as JPEG into a folder named after the company, and the
+        ZIP contains those folders plus a results.xlsx index.
       </p>
 
       <div class="field" style="margin-bottom:14px">
@@ -217,7 +218,7 @@
       </div>
 
       <div class="field" style="margin-bottom:6px">
-        <label for="bhCsv">CSV of homepage URLs (one per line, or a "url" column)</label>
+        <label for="bhCsv">CSV of companies (one per line — name and/or website)</label>
         <input id="bhCsv" type="file" accept=".csv,text/csv">
       </div>
       <p class="filecount" id="bhCount"></p>
@@ -422,18 +423,20 @@ function bhLine(text, cls) {
 
 let bhHomepages = [];
 
-/* Accepts either a bare list of URLs (one per line) or a CSV with a header
-   row containing something like "url"/"homepage"/"website" — whichever
-   column looks URL-shaped in the first data row wins if the header doesn't
-   obviously say so. */
-function parseHomepagesCsv(text) {
+/* Each row of the CSV is one company, and the WHOLE row is what gets sent to
+   the agent — "ACME LTD, DE, 7219, www.acme.com, DE123456". That is deliberate:
+   the agent takes a business name or a URL and finds the site itself, the extra
+   identifiers help it pick the right company, and the same string becomes the
+   folder name and the flow_input column in the exported spreadsheet.
+   A plain list of URLs still works — a one-column CSV is just a short row. */
+function parseCompanyRows(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (!lines.length) return [];
-  // Splits on commas outside quoted fields, so a quoted cell like
-  // "Acme, Inc." doesn't get chopped into two columns — a naive l.split(',')
-  // would, for any CSV that has more than one column.
-  const cells = (l) => {
-    const out = [];
+
+  /* Only used to decide whether row 1 is a header. The rows themselves are
+     passed through whole, commas and all, so no field-splitting is needed for
+     the payload — just for this check. */
+  const firstCell = (l) => {
     let cur = '', inQuotes = false;
     for (let i = 0; i < l.length; i++) {
       const c = l[i];
@@ -441,47 +444,60 @@ function parseHomepagesCsv(text) {
         if (inQuotes && l[i + 1] === '"') { cur += '"'; i++; }
         else inQuotes = !inQuotes;
       } else if (c === ',' && !inQuotes) {
-        out.push(cur.trim()); cur = '';
+        break;
       } else {
         cur += c;
       }
     }
-    out.push(cur.trim());
-    return out;
+    return cur.trim();
   };
+
+  /* Deciding whether row 1 is a header is the one place this parser can lose
+     data, so it errs towards keeping the row. Dropping a real company is
+     invisible — it just never appears in the results — whereas keeping a
+     header string costs one wasted flow call that shows up as a Failed row
+     anyone can see.
+
+     Three signals, in order:
+       1. the row names a website  -> data. Real company rows carry one;
+          header rows say "website", which has no dot in it.
+       2. the first cell carries a legal-entity suffix -> data. This is what
+          stops "COMPANY XYZ LTD" and "SITE SERVICES SRO" being mistaken for
+          headers just because their names contain a word like "company".
+       3. otherwise a short, label-shaped first cell naming a known column
+          -> header. Underscores count as boundaries so "company_name" and
+          "flow_input" match, which a plain \b would not do. */
   const looksUrl = (s) => /^https?:\/\//i.test(s) || /^[\w-]+\.[a-z]{2,}/i.test(s);
+  const LEGAL_SUFFIX = /(^|[\s.,])(ltd|limited|plc|inc|llc|corp|co|gmbh|ag|kg|ohg|mbh|s\.?r\.?o|a\.?s|k\.?s|sp\.?\s?z\.?o\.?o|sa|s\.?a|srl|spa|s\.?p\.?a|bv|b\.?v|nv|n\.?v|oy|ab|as|aps|kft|zrt|bt|sas|sarl|eurl|sl|s\.?l|lda|doo|d\.?o\.?o)([\s.,]|$)/i;
+  const HEADER_WORD = /(^|[\s_\-])(url|urls|homepage|website|web|site|domain|company|name|business|flow_input|input|vat|country)([\s_\-]|$)/i;
 
-  const first = cells(lines[0]);
-  let col = 0, startIdx = 0;
-  const headerCol = first.findIndex((c) => /\b(url|homepage|website|site|domain)\b/i.test(c));
-  if (headerCol >= 0) {
-    col = headerCol;
-    startIdx = 1; // skip header row
-  } else if (!looksUrl(first[0])) {
-    // First row isn't a URL and isn't a recognised header — still treat it as
-    // a header (best guess) rather than silently dropping a real URL later.
-    startIdx = 1;
-  }
+  const head = lines[0];
+  const headCell = firstCell(head);
+  const rowNamesASite = head.split(/[,;]/).some((c) => looksUrl(c.trim()));
+  const isHeader =
+    !rowNamesASite
+    && !LEGAL_SUFFIX.test(headCell)
+    && headCell.length <= 40
+    && HEADER_WORD.test(headCell);
 
-  const urls = [];
-  for (let i = startIdx; i < lines.length; i++) {
-    const row = cells(lines[i]);
-    let v = row[col] || row[0];
-    if (!v) continue;
-    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
-    urls.push(v);
+  const rows = [];
+  for (let i = isHeader ? 1 : 0; i < lines.length; i++) {
+    // Strip a wrapping pair of quotes if the whole row is quoted, but keep the
+    // interior intact — the commas are part of the company identifier.
+    const row = lines[i].replace(/^"(.*)"$/s, '$1').trim();
+    if (row) rows.push(row);
   }
-  return [...new Set(urls)];
+  return [...new Set(rows)];
 }
 
 $('bhCsv').onchange = async () => {
   const file = $('bhCsv').files[0];
   if (!file) { bhHomepages = []; $('bhCount').textContent = ''; return; }
   const text = await file.text();
-  bhHomepages = parseHomepagesCsv(text);
+  bhHomepages = parseCompanyRows(text);
   $('bhCount').innerHTML = bhHomepages.length
-    ? `<b>${bhHomepages.length}</b> homepage url(s) found`
-    : 'No urls recognised in that file — expecting one per line, optionally with a url/homepage/website header';
+    ? `<b>${bhHomepages.length}</b> company row(s) found`
+    : 'Nothing recognised in that file — expecting one company per line (name and/or website, extra columns are fine)';
   updateRunEnabled();
 };
 
@@ -539,7 +555,7 @@ $('bhRun').onclick = async () => {
   $('bhLogCard').classList.remove('hidden');
   $('bhOut').classList.add('hidden');
   bhLog.textContent = '';
-  bhLine(`starting batch — ${bhHomepages.length} homepage(s)…`);
+  bhLine(`starting batch — ${bhHomepages.length} company(ies)…`);
 
   try {
     const res = await fetch('/api/batch', {
@@ -574,23 +590,37 @@ $('bhRun').onclick = async () => {
 
 function bhRender(r) {
   const mb = (r.bytes / 1024 / 1024).toFixed(2);
+  const verified = r.rows.filter((x) => /^verified$/i.test(x.status)).length;
   $('bhStats').innerHTML = `
-    <div>Homepages <b>${r.totalHomepages}</b></div>
+    <div>Companies <b>${r.totalCompanies}</b></div>
+    <div>Verified <b>${verified}</b></div>
     <div>Screenshots <b>${r.totalShots}</b></div>
     <div>ZIP <b>${mb} MB</b></div>`;
   $('bhDl').href = '/batches/' + r.zipFile;
   $('bhDl').textContent = '⬇ Download ' + r.zipFile;
 
-  $('bhSummary').innerHTML = r.summary.map((s) => {
-    const shotList = s.shots.map((sh) =>
-      sh.file
-        ? `<li><a href="/screenshots/${esc(sh.file)}" target="_blank" rel="noopener">${esc(sh.url)}</a></li>`
-        : `<li class="err">${esc(sh.url)} — ${esc(sh.error)}</li>`
-    ).join('');
-    const label = s.error
-      ? `${esc(s.homepage)} <span class="n err">— ${esc(s.error)}</span>`
-      : `${esc(s.homepage)} <span class="n">— ${s.shots.length} screenshot(s)</span>`;
-    return `<details><summary>${label}</summary><ul>${shotList}</ul></details>`;
+  /* The screenshots live only inside the zip now (one folder per company), so
+     there is nothing to link to per page — list what was captured instead, and
+     surface the summary the agent wrote, which is the other half of what the
+     reviewer is checking. */
+  const COLS = [
+    ['homepage_screenshot_link', 'homepage'],
+    ['about_us_screenshot_link', 'about us'],
+    ['services_screenshot_link', 'services'],
+  ];
+  $('bhSummary').innerHTML = r.rows.map((row) => {
+    const shots = COLS.map(([col, name]) => {
+      const v = row[col];
+      if (!v) return `<li class="n">${name} — not found</li>`;
+      if (v === 'failed to capture') return `<li class="err">${name} — failed to capture</li>`;
+      return `<li>${name} — <code>${esc(v)}</code></li>`;
+    }).join('');
+    const summary = row.business_summarization
+      ? `<li style="margin-top:8px">${esc(row.business_summarization)}</li>` : '';
+    const err = row.error ? `<li class="err">${esc(row.error)}</li>` : '';
+    const cls = /^verified$/i.test(row.status) ? 'n' : 'n err';
+    return `<details><summary>${esc(row.flow_input)} <span class="${cls}">— ${esc(row.status)}</span></summary>`
+      + `<ul>${shots}${summary}${err}</ul></details>`;
   }).join('');
 
   $('bhOut').classList.remove('hidden');
