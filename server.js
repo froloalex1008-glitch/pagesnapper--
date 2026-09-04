@@ -145,7 +145,7 @@ app.post('/api/flowhunt/flows', async (req, res) => {
    every homepage via the chosen flow, screenshots every URL that comes back,
    and finishes with a link to the zipped result. */
 app.post('/api/batch', async (req, res) => {
-  const { apiKey, flowId, urls, width, workspaceId } = req.body || {};
+  const { apiKey, flowId, urls, width, workspaceId, fresh } = req.body || {};
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Cache-Control', 'no-cache');
 
@@ -178,6 +178,10 @@ app.post('/api/batch', async (req, res) => {
       companies,
       width: Number(width) || 1440,
       workspaceId: workspaceId || undefined,
+      /* Off by default: re-running the same list should continue it, which is
+         the whole point of resume. Set only when the user asks for a clean
+         run from the UI. */
+      fresh: Boolean(fresh),
       onLog: (message) => send({ type: 'log', message }),
       isAborted: () => closed,
     });

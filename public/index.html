@@ -223,6 +223,13 @@
       </div>
       <p class="filecount" id="bhCount"></p>
 
+      <!-- A run that was interrupted is continued by simply running the same
+           CSV again; this is the escape hatch for when you want it redone. -->
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
+        <input id="bhFresh" type="checkbox">
+        Start over (ignore saved progress for this list)
+      </label>
+
       <div class="row" style="margin-top:16px;margin-bottom:0">
         <button id="bhRun" type="button" disabled>Run batch</button>
       </div>
@@ -561,7 +568,15 @@ $('bhRun').onclick = async () => {
     const res = await fetch('/api/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey, flowId, urls: bhHomepages, workspaceId: workspaceId || undefined }),
+      /* `fresh` discards any saved progress for this exact company list and
+         starts over. Off unless the box is ticked, so the normal case — a run
+         that was interrupted and is being started again — picks up where it
+         stopped instead of repeating hours of captures. */
+      body: JSON.stringify({
+        apiKey, flowId, urls: bhHomepages,
+        workspaceId: workspaceId || undefined,
+        fresh: $('bhFresh')?.checked || false,
+      }),
     });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -594,7 +609,9 @@ function bhRender(r) {
   $('bhStats').innerHTML = `
     <div>Companies <b>${r.totalCompanies}</b></div>
     <div>Verified <b>${verified}</b></div>
-    <div>Screenshots <b>${r.totalShots}</b></div>
+    <div>Image files <b>${r.totalShots}</b></div>
+    <div>Pages documented <b>${r.pagesDocumented ?? r.totalShots}</b></div>
+    <div>Product pages <b>${r.productShots ?? 0}</b></div>
     <div>ZIP <b>${mb} MB</b></div>`;
   $('bhDl').href = '/batches/' + r.zipFile;
   $('bhDl').textContent = '⬇ Download ' + r.zipFile;
@@ -613,14 +630,22 @@ function bhRender(r) {
       const v = row[col];
       if (!v) return `<li class="n">${name} — not found</li>`;
       if (v === 'failed to capture') return `<li class="err">${name} — failed to capture</li>`;
-      return `<li>${name} — <code>${esc(v)}</code></li>`;
+      /* The services cell holds every product page, separated by "; " — list
+         them one per line rather than as one unreadable run-on path. */
+      const paths = String(v).split('; ').filter(Boolean);
+      if (paths.length > 1) {
+        return `<li>${name} (${paths.length}) —<ul>`
+          + paths.map((p) => `<li><code>${esc(p)}</code></li>`).join('') + '</ul></li>';
+      }
+      return `<li>${name} — <code>${esc(paths[0] || v)}</code></li>`;
     }).join('');
     const summary = row.business_summarization
       ? `<li style="margin-top:8px">${esc(row.business_summarization)}</li>` : '';
+    const warns = row.warnings ? `<li class="n">⚠ ${esc(row.warnings)}</li>` : '';
     const err = row.error ? `<li class="err">${esc(row.error)}</li>` : '';
     const cls = /^verified$/i.test(row.status) ? 'n' : 'n err';
     return `<details><summary>${esc(row.flow_input)} <span class="${cls}">— ${esc(row.status)}</span></summary>`
-      + `<ul>${shots}${summary}${err}</ul></details>`;
+      + `<ul>${shots}${warns}${summary}${err}</ul></details>`;
   }).join('');
 
   $('bhOut').classList.remove('hidden');

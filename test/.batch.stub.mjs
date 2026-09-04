@@ -19,9 +19,9 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import archiver from 'archiver';
 import ExcelJS from 'exceljs';
-import { capture } from './capture.js';
-import { runFlow, parseAgentResult } from './flowhunt.js';
-import { discoverProductLinks } from './discover.js';
+import { capture } from "C:\\Users\\AlexFrolo\\Desktop\\pagesnap-main\\capture.js";
+import { runFlow, parseAgentResult } from "C:\\Users\\AlexFrolo\\Desktop\\pagesnap-main\\test\\.flowhunt.stub.mjs";
+import { discoverProductLinks } from "C:\\Users\\AlexFrolo\\Desktop\\pagesnap-main\\discover.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const BATCH_DIR = process.env.BATCH_DIR || path.join(__dirname, 'batches');

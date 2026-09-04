@@ -125,7 +125,13 @@ export async function capture(opts = {}) {
   } = opts;
 
   const target = normaliseUrl(url);
-  const log = (msg) => { onLog(msg); console.log('  ' + msg); };
+  /* Mirrored to the server console so a run is followable from the terminal
+     as well as the browser — but only when nobody supplied a log sink. A caller
+     that passes onLog (the batch, the tests) is handling output itself, and
+     duplicating it here doubles every line of a 181-company run. */
+  const log = opts.onLog
+    ? (msg) => onLog(msg)
+    : (msg) => { onLog(msg); console.log('  ' + msg); };
 
   const destDir = outDir || SHOTS_DIR;
   await fs.mkdir(destDir, { recursive: true });
@@ -480,6 +486,12 @@ export async function capture(opts = {}) {
       scale: safeScale,
       capped: scrollInfo?.capped ?? false,
       images: imgInfo ?? null,
+      /* Images that still look like lazy-load placeholders when we shot the
+         page — i.e. probable blank rectangles in the finished screenshot. Only
+         logged before this; the batch spreadsheet needs it too, because a
+         reviewer looking at the XLSX has no other way to know a capture came
+         out with holes in it. */
+      placeholders: scrollInfo?.placeholders ?? 0,
       bytes: size,
       durationMs: Date.now() - started,
       steps,
