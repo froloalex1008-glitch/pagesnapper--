@@ -3,3 +3,6 @@ screenshots/
 *.zip
 *.log
 .DS_Store
+.env
+batches/
+.idea/

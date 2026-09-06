@@ -4,3 +4,6 @@ screenshots/*.png
 .git
 .DS_Store
 *.log
+.env
+batches/
+.idea/

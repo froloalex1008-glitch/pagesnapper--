@@ -83,11 +83,13 @@ or put the same two lines in `.env`, which `npm start` loads.
 
 **Set the login before generating a public domain**, not after.
 
-### Persistent screenshots
+### Persistent screenshots and exports
 
-Container filesystems are wiped on every redeploy. To keep captures, mount a Railway volume at `/app/screenshots` — the Dockerfile sets `SCREENSHOT_DIR` to that path, and `capture.js` honours it.
+Container filesystems are wiped on every redeploy. To keep captures and batch ZIPs, mount a Railway volume at `/app/data` — the Dockerfile points both `SCREENSHOT_DIR` and `BATCH_DIR` under it. A batch interrupted by a redeploy can then be resumed instead of restarted.
 
-Be aware these files are large: a single sme.sk capture is ~39MB, so a 1GB volume holds roughly 25 of them. For anything sustained you'd want either a cleanup policy or to push to object storage instead of local disk.
+Be aware these files are large: one company's batch folder is 2–10 MB as JPEG, a single-URL PNG capture can be 20–40 MB. Size the volume for the runs you plan, and delete old ZIPs from the `/batches` listing when done.
+
+The Dockerfile sets `PAGESNAP_MAX_SCALE=1`. At 2x, stitching a tall page can need several GB of RAM and gets the container OOM-killed; set it to 2 only on a plan with plenty of memory.
 
 ---
 
