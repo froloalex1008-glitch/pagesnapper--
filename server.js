@@ -18,14 +18,43 @@ const IS_HOSTED = Boolean(
 
 const app = express();
 
-/* Cookie-session login instead of HTTP Basic Auth. Basic Auth shows the browser's
-   own credential dialog and, once dismissed, a bare "Authentication required."
-   page with no way back in short of reloading. A real form is clearer and can be
-   signed out of. Enabled only when PAGESNAP_PASSWORD is set. */
-const PASSWORD = process.env.PAGESNAP_PASSWORD;
+/* ── Login ──────────────────────────────────────────────────────────────────
+   Cookie-session login with a username and password, instead of HTTP Basic
+   Auth. Basic Auth shows the browser's own credential dialog and, once
+   dismissed, a bare "Authentication required." page with no way back in short
+   of reloading. A real form is clearer and can be signed out of.
+
+   Enabled when PAGESNAP_USERNAME and PAGESNAP_PASSWORD are both set. It is
+   MANDATORY — the server refuses to start without them — whenever there is
+   something behind it worth protecting:
+     - FLOWHUNT_API_KEY is configured. The Batch tab then lets anyone who can
+       reach the page run the KPMG flow on our FlowHunt credits, and read
+       the resulting exports.
+     - the app is running on a host (Railway etc.), where "anyone who can
+       reach the page" means the whole internet.
+   Locally, with no FlowHunt key, it stays optional so a plain screenshot run
+   needs no setup. */
+const USERNAME = process.env.PAGESNAP_USERNAME || '';
+const PASSWORD = process.env.PAGESNAP_PASSWORD || '';
+const AUTH_ENABLED = Boolean(USERNAME && PASSWORD);
+const AUTH_REQUIRED = Boolean(process.env.FLOWHUNT_API_KEY) || IS_HOSTED;
 const COOKIE = 'pagesnap_session';
 
-/* Constant-time compare. A naive === leaks the password one character at a time
+if (!AUTH_ENABLED && (USERNAME || PASSWORD)) {
+  console.error('\n  ERROR: set BOTH PAGESNAP_USERNAME and PAGESNAP_PASSWORD (only one is set). Refusing to start.\n');
+  process.exit(1);
+}
+if (!AUTH_ENABLED && AUTH_REQUIRED) {
+  const why = process.env.FLOWHUNT_API_KEY ? 'FLOWHUNT_API_KEY is configured' : 'this is a hosted deployment';
+  console.error(`\n  ERROR: ${why}, so a login is required. Set PAGESNAP_USERNAME and PAGESNAP_PASSWORD. Refusing to start.\n`);
+  process.exit(1);
+}
+if (AUTH_ENABLED && PASSWORD.length < 12) {
+  console.error('\n  ERROR: PAGESNAP_PASSWORD must be at least 12 characters. Refusing to start.\n');
+  process.exit(1);
+}
+
+/* Constant-time compare. A naive === leaks the secret one character at a time
    through response timing. */
 function safeEqual(a, b) {
   const ab = Buffer.from(String(a), 'utf8');
@@ -37,10 +66,15 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ab, bb);
 }
 
-/* Derived from the password rather than random, so sessions survive a restart or
-   redeploy — and are invalidated automatically if the password is ever changed. */
+/* The session cookie value. Derived rather than random, so sessions survive a
+   restart or redeploy — and are invalidated automatically if the username or
+   password is ever changed. PAGESNAP_SESSION_SECRET can be set to rotate every
+   session without changing the password. */
 const sessionToken = () =>
-  PASSWORD ? crypto.createHmac('sha256', PASSWORD).update('pagesnap-session-v1').digest('hex') : '';
+  AUTH_ENABLED
+    ? crypto.createHmac('sha256', process.env.PAGESNAP_SESSION_SECRET || PASSWORD)
+        .update(`pagesnap-session-v2\n${USERNAME}\n${PASSWORD}`).digest('hex')
+    : '';
 
 const readCookie = (req, name) =>
   (req.headers.cookie || '')
@@ -48,21 +82,49 @@ const readCookie = (req, name) =>
     .map((c) => c.trim().split('='))
     .find(([k]) => k === name)?.[1];
 
-if (PASSWORD) {
+/* Brute-force brake on the login form: after MAX_FAILS wrong attempts from one
+   address inside the window, further attempts get a 429 until the window
+   passes. In-memory, which is fine for a single-instance app; it exists to
+   turn "guessable in an afternoon" into "not worth trying", not to be a
+   full account-lockout system. */
+const MAX_FAILS = 5;
+const FAIL_WINDOW_MS = 15 * 60 * 1000;
+const failures = new Map(); // ip -> { count, first }
+function failuresFor(ip) {
+  const f = failures.get(ip);
+  if (!f || Date.now() - f.first > FAIL_WINDOW_MS) return { count: 0, first: Date.now() };
+  return f;
+}
+
+if (AUTH_ENABLED) {
+  /* Behind Railway's proxy req.ip is the proxy unless Express is told to read
+     X-Forwarded-For — without this every visitor shares one rate-limit bucket. */
+  if (IS_HOSTED) app.set('trust proxy', 1);
+
   app.use(express.urlencoded({ extended: false })); // parses the login form POST
 
   app.get('/login', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 
   app.post('/login', (req, res) => {
-    if (safeEqual(req.body?.password || '', PASSWORD)) {
+    const f = failuresFor(req.ip);
+    if (f.count >= MAX_FAILS) return res.redirect('/login?error=locked');
+
+    /* Both compared, always, with a bitwise AND rather than && — so a wrong
+       username costs the same time as a wrong password and reveals nothing
+       about which one it was. */
+    const userOk = safeEqual(req.body?.username || '', USERNAME);
+    const passOk = safeEqual(req.body?.password || '', PASSWORD);
+    if (userOk & passOk) {
+      failures.delete(req.ip);
       res.cookie(COOKIE, sessionToken(), {
         httpOnly: true,                                  // not readable by JS, blunts XSS
         sameSite: 'lax',                                 // blunts CSRF
-        secure: process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_PROJECT_ID),
+        secure: IS_HOSTED || process.env.NODE_ENV === 'production',
         maxAge: 7 * 24 * 60 * 60 * 1000,                 // one week
       });
       return res.redirect('/');
     }
+    failures.set(req.ip, { count: f.count + 1, first: f.first });
     // Generic message, and no hint about which part was wrong.
     return res.redirect('/login?error=1');
   });
@@ -72,16 +134,18 @@ if (PASSWORD) {
     res.redirect('/login');
   });
 
-  // Guard everything else. Registered after the /login routes so they stay reachable.
+  /* Guard everything else — the UI, every /api route, the saved screenshots
+     and the batch exports. Registered after the /login routes so they stay
+     reachable. */
   app.use((req, res, next) => {
     if (safeEqual(readCookie(req, COOKIE) || '', sessionToken())) return next();
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not signed in' });
     return res.redirect('/login');
   });
 
-  console.log('  auth: enabled (login page at /login)');
+  console.log(`  auth: enabled — user "${USERNAME}" (login page at /login)`);
 } else {
-  console.log('  auth: DISABLED (set PAGESNAP_PASSWORD to require a login)');
+  console.log('  auth: DISABLED (set PAGESNAP_USERNAME and PAGESNAP_PASSWORD to require a login)');
 }
 
 app.use(express.json({ limit: '5mb' })); // raised from the default 100kb — a batch CSV of urls can exceed that
@@ -129,8 +193,22 @@ app.post('/api/capture', async (req, res) => {
 /* Proxies FlowHunt's list-flows call so the API key never has to be embedded
    in the frontend — it's typed in, used server-side for this one request, and
    not stored anywhere. */
+/* Server-side defaults from .env (FLOWHUNT_API_KEY, FLOWHUNT_WORKSPACE_ID,
+   FLOWHUNT_FLOW_ID). Anything typed into the UI wins; a blank field falls back
+   to these, so a machine with a configured .env needs nothing pasted in. */
+const FH_DEFAULTS = {
+  apiKey: process.env.FLOWHUNT_API_KEY || '',
+  workspaceId: process.env.FLOWHUNT_WORKSPACE_ID || '',
+  flowId: process.env.FLOWHUNT_FLOW_ID || '',
+};
+/* Tells the UI what is configured without ever sending the key itself. */
+app.get('/api/flowhunt/defaults', (_req, res) => {
+  res.json({ hasApiKey: Boolean(FH_DEFAULTS.apiKey), hasWorkspaceId: Boolean(FH_DEFAULTS.workspaceId), flowId: FH_DEFAULTS.flowId });
+});
+
 app.post('/api/flowhunt/flows', async (req, res) => {
-  const { apiKey, workspaceId } = req.body || {};
+  const apiKey = req.body?.apiKey || FH_DEFAULTS.apiKey;
+  const workspaceId = req.body?.workspaceId || FH_DEFAULTS.workspaceId;
   if (!apiKey) return res.status(400).json({ error: 'Missing apiKey' });
   try {
     const flows = await listFlows(apiKey, { workspaceId: workspaceId || undefined });
@@ -145,7 +223,10 @@ app.post('/api/flowhunt/flows', async (req, res) => {
    every homepage via the chosen flow, screenshots every URL that comes back,
    and finishes with a link to the zipped result. */
 app.post('/api/batch', async (req, res) => {
-  const { apiKey, flowId, urls, width, workspaceId, fresh, maxProducts } = req.body || {};
+  const { urls, width, fresh, maxProducts } = req.body || {};
+  const apiKey = req.body?.apiKey || FH_DEFAULTS.apiKey;
+  const flowId = req.body?.flowId || FH_DEFAULTS.flowId;
+  const workspaceId = req.body?.workspaceId || FH_DEFAULTS.workspaceId;
   res.setHeader('Content-Type', 'application/x-ndjson');
   res.setHeader('Cache-Control', 'no-cache');
 

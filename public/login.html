@@ -26,16 +26,21 @@
 <body>
  <form class="card" method="POST" action="/login">
   <h1>page<span>snap</span></h1>
-  <p class="sub">Enter the password to continue.</p>
-  <label for="password">Password</label>
-  <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
+  <p class="sub">Sign in to continue.</p>
+  <label for="username">Username</label>
+  <input id="username" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus required>
+  <label for="password" style="margin-top:14px">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
   <button type="submit">Sign in</button>
-  <div class="err" id="err">Incorrect password. Try again.</div>
+  <div class="err" id="err">Incorrect username or password.</div>
  </form>
  <script>
   // ?error=1 is set by the server on a failed attempt.
-  if (new URLSearchParams(location.search).has('error')) {
-    document.getElementById('err').classList.add('show');
+  const error = new URLSearchParams(location.search).get('error');
+  if (error) {
+    const el = document.getElementById('err');
+    if (error === 'locked') el.textContent = 'Too many failed attempts. Try again in 15 minutes.';
+    el.classList.add('show');
   }
  </script>
 </body></html>

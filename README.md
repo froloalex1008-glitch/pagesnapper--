@@ -49,33 +49,39 @@ railway init
 railway up
 ```
 
-Then set the password and generate a public URL:
+Then set the login, the FlowHunt credentials, and generate a public URL:
 
 ```bash
-railway variables --set PAGESNAP_PASSWORD=your-password-here
+railway variables --set PAGESNAP_USERNAME=kpmg --set PAGESNAP_PASSWORD=your-long-passphrase-here \
+  --set FLOWHUNT_API_KEY=... --set FLOWHUNT_WORKSPACE_ID=... --set FLOWHUNT_FLOW_ID=...
 railway domain
 ```
 
 `railway domain` prints the live URL. The first build takes 5–10 minutes — it downloads Chromium and its system libraries.
 
-### Password protection
+### Login
 
-The server reads two environment variables:
+The server reads these environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PAGESNAP_PASSWORD` | *(unset)* | Enables HTTP Basic Auth. **If unset, the app is completely open.** |
-| `PAGESNAP_USERNAME` | `admin` | The username to pair with it. |
+| `PAGESNAP_USERNAME` | *(unset)* | Username for the sign-in page. |
+| `PAGESNAP_PASSWORD` | *(unset)* | Password, at least 12 characters. Set together with the username. |
+| `PAGESNAP_SESSION_SECRET` | *(unset)* | Optional. Change it to sign every browser out without changing the password. |
 
-Auth is deliberately opt-in so local runs stay frictionless, and it covers everything — the UI, the capture API, and the saved PNGs. Password comparison is constant-time, so it can't be guessed character-by-character through response timing.
+Sign-in is a cookie session behind a normal login form, not HTTP Basic Auth. It covers everything: the UI, every `/api` route, the saved PNGs and the batch ZIP exports. Passwords are compared in constant time, the cookie is `httpOnly` and `sameSite`, and five wrong attempts from one address lock the form for 15 minutes.
 
-**Set `PAGESNAP_PASSWORD` before generating a public domain**, not after. A public URL without it lets anyone run captures on your compute.
+The login is **mandatory** — the server refuses to start without it — whenever `FLOWHUNT_API_KEY` is set or the app is running on a host (Railway is detected automatically). Without that rule, anyone with the URL could run the KPMG flow on your FlowHunt credits and download the exports. Locally, with no FlowHunt key, it stays optional so a plain screenshot run needs no setup.
 
-To run locally with a password:
+To run locally with a login:
 
 ```bash
-PAGESNAP_PASSWORD=secret npm start
+PAGESNAP_USERNAME=kpmg PAGESNAP_PASSWORD=a-long-passphrase npm start
 ```
+
+or put the same two lines in `.env`, which `npm start` loads.
+
+**Set the login before generating a public domain**, not after.
 
 ### Persistent screenshots
 
