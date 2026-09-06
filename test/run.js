@@ -7,6 +7,7 @@
  * The comments say which, so a future change that breaks one shows what it is
  * breaking rather than just going red.
  */
+import './env.js'; // must stay first — see the note inside
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -226,6 +227,21 @@ await test('never treats a people or contact page as a product', () => {
     'https://www.aisico.com/servizi/prove-statiche-e-dinamiche/',
     'https://a.com/about/our-services/',
   ]) assert.equal(neverAProduct(u), false, `${u} should be kept`);
+});
+
+await test('rejects shop utility pages (compare, cart, wishlist) as products', () => {
+  /* Live bug (Distrame): /catalog/product_compare/ sat under the catalogue path
+     and so matched the product keywords; product_3.jpg was an empty "no items
+     to compare" page. */
+  for (const p of [
+    '/catalog/product_compare/', '/en/compare', '/wishlist/', '/cart', '/checkout/onepage/',
+    '/customer/account/login/', '/catalogsearch/result/?q=x',
+  ]) assert.equal(neverAProduct('https://x.com' + p), true, `${p} should be rejected`);
+  /* Real pages that share letters with those words must survive. */
+  for (const p of [
+    '/products/cartridges/', '/services/accounting-software/', '/comparators/', '/basketball-hoops/',
+    '/search-and-rescue-equipment/',
+  ]) assert.equal(neverAProduct('https://x.com' + p), false, `${p} should be kept`);
 });
 
 await test('rejects booking and enquiry forms as products', () => {

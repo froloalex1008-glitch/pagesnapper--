@@ -85,11 +85,23 @@ const BOOKING_FORM = new RegExp(
   + '|newsletter|buchen|anfrage|devis|foglal[aá]s|rezerwacja|rezerv[aá]c|objednat'
   + ')[^/]*(/|$)', 'i');
 
-/** True when a URL's path is one of those pages, or a booking/enquiry form. */
+/* Shop plumbing that lives under a catalogue path and so inherits its product
+   keywords. Live example (Distrame): /catalog/product_compare/ was filed as
+   product_3 — an empty "you have no items to compare" page in a KPMG
+   deliverable. Whole segments only; "cart" as a substring would drop
+   "/cartridges/", and "compare" inside a longer word is rare enough that the
+   segment form is what actually occurs in practice (Magento, WooCommerce,
+   PrestaShop all use it as its own segment). */
+const SHOP_UTILITY = new RegExp(
+  '/(product_compare|compare|wishlist|cart|basket|checkout|customer|account|my-account'
+  + '|search|catalogsearch|quickorder|advanced-search)(/|$)', 'i');
+
+/** True when a URL's path is one of those pages, a booking/enquiry form, or a
+    shop utility page (compare, cart, wishlist, checkout). */
 export function neverAProduct(url) {
   try {
     const p = new URL(url).pathname;
-    return NEVER_A_PRODUCT.test(p) || BOOKING_FORM.test(p);
+    return NEVER_A_PRODUCT.test(p) || BOOKING_FORM.test(p) || SHOP_UTILITY.test(p);
   } catch { return false; }
 }
 

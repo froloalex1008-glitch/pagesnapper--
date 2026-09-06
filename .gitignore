@@ -14,3 +14,4 @@ test/.*.stub.mjs
 *.log
 .DS_Store
 .env
+.idea/
