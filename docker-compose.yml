@@ -1,0 +1,93 @@
+# Runs pagesnap the same way the Dockerfile does on a host, but locally: same
+# image, same /app/data layout, same environment. Useful for checking a change
+# behaves in a container before it reaches Railway, and as the simplest way to
+# self-host this.
+#
+#   cp .env.example .env    # fill in at least PAGESNAP_USERNAME/PASSWORD
+#   docker compose up --build
+#   open http://localhost:3000
+#
+# See docker-compose.override.yml.example for the small local tweaks (a
+# different port, a bind-mounted data directory) that are worth keeping out of
+# this file.
+
+services:
+  pagesnap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pagesnap:local
+
+    # Every secret comes from .env, which is gitignored — nothing here holds a
+    # credential. `required: false` so `docker compose up` still works with no
+    # .env at all: the app then runs open, with no FlowHunt key and no login,
+    # which is exactly what it does when started with `npm start`.
+    env_file:
+      - path: .env
+        required: false
+
+    # Everything here wins over env_file, which is the point. .env.example
+    # ships these keys present-but-empty ("SCREENSHOT_DIR="), and an empty
+    # value in an env_file does not mean "unset" — it overrides the Dockerfile's
+    # ENV with an empty string, and the app then falls back to its own default
+    # of /app/screenshots. The captures land outside the mounted volume and are
+    # lost on the next `docker compose down`, with nothing in the logs to say
+    # so beyond a path nobody reads. These three are structural — they are tied
+    # to the volume mount and to the container's memory — so they are pinned
+    # here rather than left to whatever .env happens to contain.
+    environment:
+      # The app's own default is 3000 and the Dockerfile already sets it; this
+      # is here so the port the container listens on and the port published
+      # below cannot drift apart.
+      PORT: 3000
+      # Both under /app/data, which is the mounted volume. See above.
+      SCREENSHOT_DIR: /app/data/screenshots
+      BATCH_DIR: /app/data/batches
+      # 1x. At 2x, stitching a tall page can need several GB to composite and
+      # the container is OOM-killed. Raise it in an override file, on a machine
+      # with the memory for it.
+      PAGESNAP_MAX_SCALE: "1"
+      # Marks this as a hosted deployment: it forces the login to be mandatory
+      # and tells the UI that screenshots land on a container's disk rather
+      # than the visitor's. Compose is a deployment, not a dev shell — the one
+      # thing you do not want is a container reachable on your network serving
+      # the batch tab, and your FlowHunt credits, with no password.
+      PAGESNAP_HOSTED: "1"
+
+    # Published port only. PAGESNAP_PORT in .env moves it when 3000 is taken —
+    # a Next.js dev server on the same machine, another compose stack.
+    ports:
+      - "${PAGESNAP_PORT:-3000}:3000"
+
+    # Screenshots AND batch output live under /app/data (see the Dockerfile).
+    # One named volume keeps both across `docker compose down` and a rebuild,
+    # which is what lets an interrupted batch be continued rather than redone.
+    volumes:
+      - pagesnap-data:/app/data
+
+    # Chromium spawns a tree of processes per capture, and with several running
+    # in parallel a batch leaves a lot of children behind. PID 1 in this image
+    # is node, which does not reap them — without an init they accumulate as
+    # zombies for as long as the container lives.
+    init: true
+
+    # capture.js already passes --disable-dev-shm-usage, which routes Chromium's
+    # rendering surfaces to /tmp instead of /dev/shm. This is belt-and-braces
+    # for anything that does not: Docker's 64MB default is not enough for a
+    # tall, image-heavy page and the renderer dies as an opaque "Target crashed".
+    shm_size: 1gb
+
+    restart: unless-stopped
+
+    # /healthz is deliberately outside the login, so this works whether or not
+    # credentials are configured. start_period covers the first boot, where
+    # pruning the batches directory happens before the listener opens.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  pagesnap-data:

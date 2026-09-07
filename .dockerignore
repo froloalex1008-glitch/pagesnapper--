@@ -7,3 +7,5 @@ screenshots/*.png
 .env
 batches/
 .idea/
+data/
+docker-compose.override.yml

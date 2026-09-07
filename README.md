@@ -36,6 +36,29 @@ node cli.js https://www.flowhunt.io/
 
 ---
 
+## Running it with Docker Compose
+
+The same image the Dockerfile builds for Railway, run locally:
+
+```bash
+cp .env.example .env     # fill in at least PAGESNAP_USERNAME / PAGESNAP_PASSWORD
+docker compose up --build
+open http://localhost:3000
+```
+
+`.env` is optional — with none, the app runs open on port 3000 exactly as `npm start` does. Everything secret comes from that file, so nothing in `docker-compose.yml` holds a credential.
+
+Two things the compose file pins deliberately, because leaving them to `.env` breaks quietly:
+
+- **`SCREENSHOT_DIR` and `BATCH_DIR`.** `.env.example` ships these keys present-but-empty, and an empty value in an `env_file` does not mean "unset" — it overrides the Dockerfile's `ENV` with an empty string. The app then falls back to `/app/screenshots`, outside the mounted volume, and everything is lost on the next `docker compose down` with nothing in the logs to say so.
+- **`PAGESNAP_HOSTED=1`.** This makes the login mandatory. A compose stack is a deployment, not a dev shell, and the thing you do not want is a container reachable on your network serving the batch tab — and your FlowHunt credits — with no password.
+
+Screenshots and batch output share one named volume at `/app/data`, so they survive `docker compose down` and a rebuild, which is what lets an interrupted batch be continued rather than redone. Copy `docker-compose.override.yml.example` to `docker-compose.override.yml` (gitignored) to change the published port, bind-mount `./data` instead of the volume, raise the capture scale, or cap the container's memory.
+
+`GET /healthz` sits outside the login and is what the container healthcheck uses.
+
+---
+
 ## Deploying it (Railway)
 
 The app is a long-running server that drives a real browser and writes large files, so it needs a **container** host, not a serverless one. Railway, Render, Fly.io and any plain VPS all work. **Vercel and Netlify do not** — their functions cap execution at 10–300s (a tall mobile capture exceeds that), have no persistent disk, and can't ship a full Chromium.
@@ -165,6 +188,7 @@ Everything below exists to fix one of those failure modes.
 | `cli.js` | Terminal runner, for fast iteration without the UI. |
 | `verify.js` | Validation tool. Renders evenly-spaced crops of a capture to eyeball. |
 | `blankcheck.js` | Validation tool. Reports blank horizontal bands as a % of page height. |
+| `Dockerfile` / `docker-compose.yml` | The container. One image, used both by Railway and by `docker compose up`. |
 
 The last two matter more than they look. A capture that *reports* success can still be visually broken — the whole point is that you can't trust the pipeline's own logs. See "How this was validated" below.
 
