@@ -19,9 +19,12 @@ services:
     image: pagesnap:local
 
     # Every secret comes from .env, which is gitignored — nothing here holds a
-    # credential. `required: false` so `docker compose up` still works with no
-    # .env at all: the app then runs open, with no FlowHunt key and no login,
-    # which is exactly what it does when started with `npm start`.
+    # credential. `required: false` so the file is optional for hosts that
+    # inject PAGESNAP_USERNAME/PASSWORD some other way (a systemd unit, a
+    # secrets manager, `docker compose --env-file`). Note that PAGESNAP_HOSTED
+    # below makes the login mandatory: with no credentials from anywhere the
+    # server exits at startup with "a login is required", and restart:
+    # unless-stopped then loops it. Check `docker compose logs` first.
     env_file:
       - path: .env
         required: false

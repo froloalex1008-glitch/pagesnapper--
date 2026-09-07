@@ -26,6 +26,13 @@ const IS_HOSTED = Boolean(
 
 const app = express();
 
+/* Liveness probe, deliberately registered before the auth middleware so a
+   container orchestrator can reach it without credentials. It answers with a
+   constant — no version, no configuration, nothing about whether FlowHunt is
+   set up — so leaving it unauthenticated gives an anonymous caller nothing
+   beyond "this process is up", which the TCP connection already told them. */
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
 /* ── Login ──────────────────────────────────────────────────────────────────
    Cookie-session login with a username and password, instead of HTTP Basic
    Auth. Basic Auth shows the browser's own credential dialog and, once
