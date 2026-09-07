@@ -338,6 +338,49 @@ await test('finds nothing on that site without a seed to work from', async () =>
   assert.equal(links.length, 0, 'keyword matching should find nothing here');
 });
 
+console.log('\ncapture locale');
+
+/* QA reproduced a company arriving in two languages at once — English homepage,
+   English about-us, Hungarian product page — from URLs the agent had returned
+   consistently. The context was pinned to en-US, so the site's own default URLs
+   were served in English while a URL naming its language in the path was not. */
+const { captureLocale } = await import('../capture.js');
+
+await test('serves a Hungarian site in Hungarian, not English', () => {
+  assert.equal(captureLocale('https://example.hu/'), 'hu-HU');
+  assert.equal(captureLocale('https://example.hu/rolunk/'), 'hu-HU');
+  assert.equal(captureLocale('https://example.hu/termekek/'), 'hu-HU');
+  assert.equal(captureLocale('https://www.example.hu/'), 'hu-HU');
+});
+
+await test('lets an explicit language path override the domain', () => {
+  /* The site itself said which language this URL is. That statement outranks
+     any guess made from the hostname, in both directions. */
+  assert.equal(captureLocale('https://example.hu/en/'), 'en-US');
+  assert.equal(captureLocale('https://example.hu/en/products/'), 'en-US');
+  assert.equal(captureLocale('https://example.hu/hu/'), 'hu-HU');
+  assert.equal(captureLocale('https://example.com/hu/'), 'hu-HU');
+});
+
+await test('reads the path only, so a query or fragment cannot confuse it', () => {
+  assert.equal(captureLocale('https://example.hu/en/?lang=hu'), 'en-US');
+  assert.equal(captureLocale('https://example.hu/en#hu'), 'en-US');
+  assert.equal(captureLocale('https://example.hu/?lang=en'), 'hu-HU');
+  assert.equal(captureLocale('https://example.hu/#en'), 'hu-HU');
+});
+
+await test('leaves every other site on the previous default', () => {
+  /* Deliberately not the start of a country-TLD table: only .hu changes
+     behaviour, and only because a live failure was reproduced on one. */
+  assert.equal(captureLocale('https://example.com/'), 'en-US');
+  assert.equal(captureLocale('https://example.it/prodotti/'), 'en-US');
+  assert.equal(captureLocale('https://example.de/'), 'en-US');
+  // A hostname that merely ends in the letters "hu" is not a .hu domain.
+  assert.equal(captureLocale('https://zhu.example.com/'), 'en-US');
+  // Unparseable input keeps the old behaviour rather than throwing.
+  assert.equal(captureLocale('not a url'), 'en-US');
+});
+
 console.log('\ncollapsed content');
 
 /* biomed.example's About page was captured with Mission, Collaborative Research,

@@ -75,7 +75,7 @@ railway up
 Then set the login, the FlowHunt credentials, and generate a public URL:
 
 ```bash
-railway variables --set PAGESNAP_USERNAME=kpmg --set PAGESNAP_PASSWORD=your-long-passphrase-here \
+railway variables --set PAGESNAP_USERNAME=admin --set PAGESNAP_PASSWORD=your-long-passphrase-here \
   --set FLOWHUNT_API_KEY=... --set FLOWHUNT_WORKSPACE_ID=... --set FLOWHUNT_FLOW_ID=...
 railway domain
 ```
@@ -94,12 +94,12 @@ The server reads these environment variables:
 
 Sign-in is a cookie session behind a normal login form, not HTTP Basic Auth. It covers everything: the UI, every `/api` route, the saved PNGs and the batch ZIP exports. Passwords are compared in constant time, the cookie is `httpOnly` and `sameSite`, and five wrong attempts from one address lock the form for 15 minutes.
 
-The login is **mandatory** — the server refuses to start without it — whenever `FLOWHUNT_API_KEY` is set or the app is running on a host (Railway is detected automatically). Without that rule, anyone with the URL could run the KPMG flow on your FlowHunt credits and download the exports. Locally, with no FlowHunt key, it stays optional so a plain screenshot run needs no setup.
+The login is **mandatory** — the server refuses to start without it — whenever `FLOWHUNT_API_KEY` is set or the app is running on a host (Railway is detected automatically). Without that rule, anyone with the URL could run your FlowHunt flow on your credits and download the exports. Locally, with no FlowHunt key, it stays optional so a plain screenshot run needs no setup.
 
 To run locally with a login:
 
 ```bash
-PAGESNAP_USERNAME=kpmg PAGESNAP_PASSWORD=a-long-passphrase npm start
+PAGESNAP_USERNAME=admin PAGESNAP_PASSWORD=a-long-passphrase npm start
 ```
 
 or put the same two lines in `.env`, which `npm start` loads.
@@ -270,4 +270,4 @@ node verify.js     screenshots/<file>.png 5 # render 5 crops to /tmp for eyeball
 - **Infinite scroll** is capped at 60 passes / 60000px. When the cap is hit, the result carries `capped: true` and the UI shows a warning — a "full page" screenshot of an endless feed is undefined, so it's surfaced rather than hidden.
 - **Unresolved images** are reported (`images: 140/144`). Stragglers are almost always third-party ad slots that never load in a headless browser.
 - **Cloudflare** is waited out, not bypassed. If a site escalates to an interactive challenge, the capture will show it.
-- The browser identifies itself with a normal desktop Chrome user-agent and `sk-SK` locale so sites serve their standard content.
+- The browser identifies itself with a normal desktop Chrome user-agent. Locale is chosen per URL — English by default, Hungarian for `.hu` sites or an explicit `/hu/` path, an explicit `/en/` path always wins — so a multilingual site's own language-serving logic isn't overridden into showing the wrong language. See `captureLocale` in `capture.js`.

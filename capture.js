@@ -190,8 +190,9 @@ export async function capture(opts = {}) {
     // not a fix for any confirmed block, but a real mismatch (an Italian or
     // French company site being visited by a "Slovak" browser) that some
     // bot-detection systems weigh alongside everything else. en-US is the
-    // least distinctive default the web sees.
-    locale: 'en-US',
+    // least distinctive default the web sees — but it is not free on a
+    // multilingual site, which reads it and serves English. See captureLocale.
+    locale: captureLocale(target),
     // Stops CSS/JS that branches on prefers-reduced-motion from animating at all.
     reducedMotion: 'reduce',
   });
@@ -577,6 +578,38 @@ function normaliseUrl(raw) {
   const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
   const u = new URL(withProto); // throws on genuinely malformed input
   return u.toString();
+}
+
+/* Which browser locale to present for a given URL.
+ *
+ * A multilingual site reads the browser's language and serves accordingly. With
+ * the context pinned to en-US, a Hungarian site's own default URLs came back in
+ * English while a URL that names its language in the path came back in that
+ * language — so one company's three captures could arrive in two languages even
+ * though the URLs handed to us were consistent. QA reproduced exactly that on a
+ * .hu site: English homepage, English about-us, Hungarian product page.
+ *
+ * Deliberately narrow. An explicit language segment in the path is the site's
+ * own statement of intent and always wins; failing that, a .hu host defaults to
+ * Hungarian. Everything else keeps the previous en-US behaviour — this is not
+ * the start of a country-TLD-to-locale table, and shouldn't become one without
+ * evidence of the same failure elsewhere.
+ */
+export function captureLocale(url) {
+  try {
+    const parsed = new URL(url);
+    // Path only, so ?lang=… and #fragments can never confuse the match.
+    const pathname = parsed.pathname.toLowerCase();
+    if (/^\/en(?:\/|$)/.test(pathname)) return 'en-US';
+    if (/^\/hu(?:\/|$)/.test(pathname)) return 'hu-HU';
+
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'hu' || hostname.endsWith('.hu')) return 'hu-HU';
+  } catch {
+    // Unparseable input keeps the old default rather than throwing here;
+    // normaliseUrl is what reports a genuinely malformed URL.
+  }
+  return 'en-US';
 }
 
 function buildFilename(url, format = 'png') {
