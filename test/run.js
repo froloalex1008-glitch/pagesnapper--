@@ -142,6 +142,28 @@ await test('splits urls joined by a pipe with no spaces', () => {
   assert.equal(r.urls.services, 'https://www.aferetica.com/trapianto/sistemi/');
 });
 
+await test('reads a list of product urls, not just a string', () => {
+  /* The obvious next improvement is on the agent side: return every product
+     page instead of one. Before this, a JSON array reached the parser, failed a
+     typeof check and was dropped silently — so that improvement would have made
+     the output worse with nothing to explain why. */
+  const r = parseAgentResult(envelope({
+    status_code: 'Verified', reasoning: 'x', homepage_url: 'https://a.com/',
+    services_page_url: ['https://a.com/p1/', 'https://a.com/p2/', 'https://a.com/p3/'],
+  }));
+  assert.equal(r.urlOptions.services.length, 3, 'every url in the array must be read');
+  assert.equal(r.urls.services, 'https://a.com/p1/');
+});
+
+await test('reads several product urls given one per line', () => {
+  // The zero-code-change option for the flow: newline-separated text.
+  const r = parseAgentResult(envelope({
+    status_code: 'Verified', reasoning: 'x', homepage_url: 'https://a.com/',
+    services_page_url: 'https://a.com/p1/\nhttps://a.com/p2/\nhttps://a.com/p3/',
+  }));
+  assert.equal(r.urlOptions.services.length, 3);
+});
+
 console.log('\ncompany row parsing');
 
 await test('pulls the website out of a KPMG company row', () => {
@@ -266,6 +288,36 @@ await test('rejects booking and enquiry forms as products', () => {
     '/servizi/crash-test/i-nostri-crash-test/',
     '/water-reservoirs/', '/steam-boilers/',
   ]) assert.equal(neverAProduct('https://x.com' + p), false, `${p} should be kept`);
+});
+
+await test('rejects careers, privacy, legal, press and feeds in any language', async () => {
+  /* Live bug (ACTIVORIS): the reject list was English-only, and sibling
+     matching takes a page for WHERE it sits rather than what it is called. Six
+     "products" came back of which five were wrong, and product_6.jpg was a
+     screenshot of raw RSS XML. */
+  const seed = site.rejectUrl + 'widgets/';
+  const { links } = await discoverProductLinks(site.rejectUrl, { limit: 50, seeds: [seed] });
+  for (const bad of ['/karriere/', '/datenschutz/', '/rechtliches/', '/feed/',
+                     '/lavora-con-noi/', '/rassegna-stampa/', '/certificazione-ce/',
+                     '/4-workshop-purification-therapies/', '/grant-1-2-4-25-2025-01916/']) {
+    assert.ok(!links.some((u) => u.includes(bad)), `picked up ${bad}`);
+  }
+  assert.ok(links.some((u) => u.includes('/widgets/')), 'the one real product must survive');
+});
+
+await test('does not capture the homepage again in another language', async () => {
+  const { links } = await discoverProductLinks(site.rejectUrl, { limit: 50, seeds: [site.rejectUrl + 'widgets/'] });
+  assert.ok(!links.some((u) => /\/(en|de)\/?$/.test(u)), 'a language-only path is the homepage');
+});
+
+await test('keeps one language when a site publishes every product twice', async () => {
+  /* Live bug (ADEXGO): /termekek/ and /en/products/ are the same page in two
+     languages, with identical photographs, and both were captured — two of
+     two slots for one page. AFERETICA spent two of four the same way. */
+  const { links } = await discoverProductLinks(site.bilingualUrl, { limit: 50 });
+  assert.ok(links.length > 0, 'the site does have products');
+  assert.ok(!links.some((u) => u.includes('/en/')), 'the /en/ copies are translations of what we already have');
+  assert.ok(links.some((u) => u.includes('/termekek/')), 'the site-language original must stay');
 });
 
 await test('finds products on a site that names pages after the products', async () => {

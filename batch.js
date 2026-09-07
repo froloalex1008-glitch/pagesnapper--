@@ -593,6 +593,17 @@ export async function captureCompany({
       || (productUrls.length ? 'failed to capture' : '');
     row.product_pages = productLinks.length;
   }
+
+  /* A row carrying nothing but a homepage is indistinguishable, in the
+     spreadsheet, from a complete one: the status column shows whatever the
+     agent said, and the agent's "Verified" only means the homepage returned
+     HTTP 200. AG MOTORS came back Verified with a single file in its folder —
+     of a company that was not the one in the input — and nothing in the row
+     said so. Sorting by status would have put it with the good rows. */
+  if (row.homepage_screenshot_link && !row.about_us_screenshot_link && !row.product_pages) {
+    warn('only the homepage was captured — no about-us or product pages found');
+  }
+
   return { row, interrupted };
 }
 

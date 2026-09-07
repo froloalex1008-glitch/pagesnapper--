@@ -244,6 +244,16 @@ function readStructured(result) {
     const hit = Object.keys(source).find((k) => test(norm(k)));
     if (!hit) return [];
     const v = source[hit];
+    /* An ARRAY is accepted as well as a string. The flow currently returns one
+       url per field as text, and the obvious improvement on the agent side is
+       to return a list of product pages instead — it can read the pages, we can
+       only read their addresses. Before this, a JSON array arrived here, failed
+       the typeof check and was silently dropped, so that improvement would have
+       made the output WORSE with no error to explain why. Handling both shapes
+       now means the flow can change without waiting on a release here.
+       Newline- or pipe-separated text already works: extractUrls finds every
+       url in a string. */
+    if (Array.isArray(v)) return extractUrls(v.filter((x) => typeof x === 'string').join('\n'));
     if (typeof v !== 'string') return [];
     return extractUrls(v);
   };

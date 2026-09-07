@@ -55,7 +55,58 @@ const REJECT = new RegExp([
   'richiedi', 'request-a', 'preventivo', 'quote', 'iscriviti', 'newsletter',
   'buchen', 'anfrage', 'reserva', 'reserver', 'r[ée]server', 'devis',
   'foglal', 'rezerw', 'rezerv', 'objednat', 'objednavka',
+
+  /* ── Everything above this line is English, and that was fine while
+     discovery matched product KEYWORDS: a German privacy page was never going
+     to contain the word "product". Sibling matching changed the rules — it
+     takes a page because of WHERE it sits, not what it is called — and a live
+     run against activoris.com returned six "products" of which five were
+     /karriere/, /datenschutz/, /rechtliches/, /feed/ and the site's own
+     English homepage. product_6.jpg was a screenshot of raw RSS XML.
+
+     So the same categories, in the languages KPMG's list actually contains. */
+  // careers
+  'karriere', 'stellenangebote', 'lavora-con-noi', 'lavora-con', 'praca', 'kariera',
+  'allas', 'álláss', 'empleo', 'emploi', 'locuri-de-munca', 'kariéra',
+  // privacy, legal and terms
+  'datenschutz', 'rechtliches', 'agb', 'nutzungsbedingungen',
+  'note-legali', 'informativa', 'privacidad', 'aviso-legal', 'mentions-legales',
+  'ochrana-osobnych', 'ochrana-udaju', 'adatvedelmi', 'polityka-prywatnosci',
+  // press, media and complaints
+  'rassegna-stampa', 'comunicati', 'medien', 'aktualnosci', 'hirek', 'novinky',
+  'ricorsi', 'reclami', 'segnalazioni', 'complaint', 'whistleblow',
+  // certifications and accreditations — company credentials, not offerings
+  'certifica', 'accredit', 'zertifiz', 'tanusit',
+  /* Events and publications. The list had "news" but not "workshop", so
+     aferetica.com/4-workshop-purification-therapies-…-transplant-international-journal/
+     — a conference paper announcement — was captured as product_4. */
+  'workshop', 'convegno', 'congress', 'webinar', 'seminar', 'evento', 'konferen',
+  'white-paper', 'whitepaper', 'publication', 'pubblicazioni', 'brochure',
+  // machine-readable endpoints that render as source code in a screenshot
+  '/feed', '/rss', '/amp', '/wp-json', '/sitemap',
 ].join('|'), 'i');
+
+/* A path segment that is a reference number rather than a name. EU grant
+   disclosures are the case that made this necessary — admatis.com carries
+   /ginop_plusz-1-2-4-25-2025-01916/ and /ginop_plusz-2-1-1-21-2022-00132/,
+   mandatory funding notices that sibling matching filed as products. Rather
+   than hardcode the Hungarian programme names (every country has its own:
+   GINOP, EFOP, POIR, POIG…), reject any segment carrying three or more
+   separate number groups. A product page is essentially never named that way,
+   while "/cheops-2/" and "/karba-go-88-b/" have one group and survive. */
+const REFERENCE_CODE = /(?:\d+[-_]){3,}\d*/;
+
+/* A path that is nothing but a language code: /en/, /de/, /en-us/. This is the
+   homepage in another language, not a product — activoris.com/?lang=en and
+   aisico.com/en/ were both captured as products in a live run, duplicating a
+   homepage screenshot we already had. */
+const LANGUAGE_ONLY_PATH = /^\/[a-z]{2}(?:[-_][a-z]{2})?\/?$/i;
+
+/** The leading language segment of a path, or '' when there isn't one. */
+export function languagePrefix(pathname) {
+  const first = String(pathname || '').split('/').filter(Boolean)[0] || '';
+  return /^[a-z]{2}(?:[-_][a-z]{2})?$/i.test(first) ? first.toLowerCase().replace('_', '-') : '';
+}
 
 /* A deliberately NARROW test for pages that cannot be a product no matter what
    any source claims. Used on the agent's own URLs, which are otherwise trusted
@@ -191,7 +242,12 @@ async function harvest(page, originHost, seen) {
     if (NOT_A_PAGE.test(u.pathname)) continue;
 
     const pathAndQuery = u.pathname + u.search;
-    if (pathAndQuery === '/' || pathAndQuery === '') continue;   // that's the homepage
+    /* The homepage in each of its disguises. Matching the bare string "/"
+       missed two of them: a query makes it "/?lang=en" and a language prefix
+       makes it "/en/", and both were captured as products in a live run. */
+    if (u.pathname === '/' || u.pathname === '') continue;
+    if (LANGUAGE_ONLY_PATH.test(u.pathname) && !u.search) continue;
+    if (REFERENCE_CODE.test(u.pathname)) continue;
     if (REJECT.test(pathAndQuery)) continue;
 
     const key = docKey(u.toString());
@@ -324,6 +380,31 @@ export async function discoverProductLinks(homepageUrl, { limit = 5, seeds = [],
         candidates.push(...siblings);
         candidates.sort((x, y) => score(y) - score(x));
       }
+    }
+
+    /* ── One language per company ──────────────────────────────────────────
+       A bilingual site offers every product twice, and both copies score the
+       same, so both get captured. adexgo.hu came back with exactly two product
+       pages — /termekek/ and /en/products/ — which are one page in Hungarian
+       and English, with identical photographs. aferetica.com spent two of its
+       four slots the same way. On a six-page cap that is half the budget gone
+       to duplicates.
+
+       Path comparison cannot see it: the slug is translated too, so
+       "/termekek/" and "/en/products/" share no characters. What they do share
+       is that one carries a language prefix and the other doesn't. So: keep
+       the language the HOMEPAGE is in. advantech-time.com/it/ is itself
+       prefixed, so its /it/ pages are the ones kept and /en/ dropped; adexgo.hu
+       has no prefix, so /termekek/ stays and /en/products/ goes.
+
+       The guard matters — if a company's only product pages live under a
+       foreign prefix, dropping them all would leave nothing, and one language
+       of a product beats none. */
+    const homeLang = languagePrefix(new URL(homepageUrl).pathname);
+    const sameLanguage = candidates.filter((c) => languagePrefix(c.pathAndQuery) === homeLang);
+    if (sameLanguage.length && sameLanguage.length < candidates.length) {
+      onLog(`dropped ${candidates.length - sameLanguage.length} page(s) that are other-language copies`);
+      candidates = sameLanguage;
     }
 
     const links = candidates.slice(0, limit).map((c) => c.url);

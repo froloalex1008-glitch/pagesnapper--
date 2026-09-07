@@ -62,6 +62,37 @@ const PAGES = {
   '/contact/': 'Contact',
 };
 
+/* activoris.com's shape: a German site whose nav carries careers, privacy and
+   legal pages, an RSS feed, an EU grant notice and the homepage in two other
+   languages — every one of which a live run captured as a product. Plus one
+   real product, which must survive. */
+const REJECT_LINKS = [
+  '/widgets/', '/karriere/', '/datenschutz/', '/rechtliches/', '/feed/',
+  '/lavora-con-noi/', '/rassegna-stampa/', '/certificazione-ce/',
+  '/4-workshop-purification-therapies/', '/grant-1-2-4-25-2025-01916/',
+  '/en/', '/de/',
+];
+const REJECT_NAV = `<nav>${REJECT_LINKS.map((x) => `<a href="${x}">${x}</a>`).join(' ')}</nav>`;
+
+/* adexgo.hu's shape: every product exists twice, once in the site's own
+   language and once under /en/. Both scored the same, so both were captured —
+   two slots, one page. */
+const BILINGUAL_LINKS = ['/termekek/', '/szolgaltatasok/', '/en/products/', '/en/services/'];
+const BILINGUAL_NAV = `<nav>${BILINGUAL_LINKS.map((x) => `<a href="${x}">${x}</a>`).join(' ')}</nav>`;
+
+/* Each of these lives at the ROOT of its own port, because that is where a
+   company website lives. Serving them under /reject/ and /bilingual/ on the
+   shared port made "/en/" look like "/reject/en/" — not a language-only path —
+   and the language rules under test never fired. The harness was wrong, not
+   the code, and it took two red tests to notice. */
+function serveShape(port, title, nav) {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(render(new URL(req.url, 'http://x').pathname, title, { nav }));
+  });
+  return new Promise((r) => server.listen(port, () => r(server)));
+}
+
 /* A site whose product pages are named after the products. Nothing in these
    paths contains "product" or "service" — exactly admatis.com's shape. */
 const NAMED_PRODUCTS = [
@@ -118,11 +149,20 @@ export function startTestSite(port = 8099) {
     res.end(render(key, title));
   });
   return new Promise((resolve) => {
-    server.listen(port, () => resolve({
+    server.listen(port, async () => resolve({
+      extraServers: [
+        await serveShape(port + 1, 'Reject Co', REJECT_NAV),
+        await serveShape(port + 2, 'Bilingual Co', BILINGUAL_NAV),
+      ],
       url: `http://localhost:${port}/`,
       namedUrl: `http://localhost:${port}/named/`,
+      rejectUrl: `http://localhost:${port + 1}/`,
+      bilingualUrl: `http://localhost:${port + 2}/`,
       namedProducts: NAMED_PRODUCTS.map((p) => `/named${p}`),
-      close: () => new Promise((r) => server.close(r)),
+      close: async function () {
+        for (const s of this.extraServers) await new Promise((r) => s.close(r));
+        await new Promise((r) => server.close(r));
+      },
     }));
   });
 }
