@@ -14,4 +14,9 @@ test/.*.stub.mjs
 *.log
 .DS_Store
 .env
+# Local compose tweaks (a different port, a bind-mounted data dir, memory
+# limits). docker-compose.override.yml.example is the committed template.
+docker-compose.override.yml
+# Where the bind-mount variant of that override puts screenshots and batches.
+data/
 .idea/
