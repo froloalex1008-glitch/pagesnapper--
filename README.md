@@ -87,9 +87,38 @@ or put the same two lines in `.env`, which `npm start` loads.
 
 Container filesystems are wiped on every redeploy. To keep captures and batch ZIPs, mount a Railway volume at `/app/data` — the Dockerfile points both `SCREENSHOT_DIR` and `BATCH_DIR` under it. A batch interrupted by a redeploy can then be resumed instead of restarted.
 
-Be aware these files are large: one company's batch folder is 2–10 MB as JPEG, a single-URL PNG capture can be 20–40 MB. Size the volume for the runs you plan, and delete old ZIPs from the `/batches` listing when done.
+Be aware these files are large: one company's batch folder is 2–10 MB as JPEG, a single-URL PNG capture can be 20–40 MB. Size the volume for the runs you plan.
+
+Batch output does **not** grow without bound. Everything a run produces lives in one fixed directory, `batches/work/`, which is emptied when a different company list is loaded; each company's folder is emptied before that company is captured; and the export is a single `batches/batch.zip` overwritten on every build. Disk use is capped at roughly one run, whatever else happens. On startup the server also deletes the timestamped zips and `run-<hash>` folders older versions left behind.
 
 The Dockerfile sets `PAGESNAP_MAX_SCALE=1`. At 2x, stitching a tall page can need several GB of RAM and gets the container OOM-killed; set it to 2 only on a plan with plenty of memory.
+
+---
+
+## Batch runs
+
+The Batch tab takes a CSV of companies and a FlowHunt flow. The CSV is loaded straight into a table — one row per company, showing its own columns — before anything is sent anywhere, so you see what will run before running it.
+
+From there:
+
+- **Run all** captures every row; **Run unfinished** picks up the ones that are not done, which is how you continue an interrupted run.
+- **Run** / **Re-run** on a single row does that one company on its own. Its folder is emptied first, so a re-run replaces its screenshots rather than adding to them.
+- **Parallel runs** (1–10) is how many companies are captured at the same time. Each holds its own browser, so 3–4 suits a laptop and 10 needs the RAM to match. The ceiling is enforced on the server, not just in the input.
+- **Details** on a row shows what the flow decided and what was captured — pages found, product screenshots, the business summary, and any warnings. There is no log to read.
+- Every company gets its homepage, its about-us page and **up to six product pages**. That cap is fixed, not a setting: uncapped runs made the time for a list impossible to predict, and a per-run knob only moved that problem into the UI. Where a company has more, the row's `warnings` column says how many were found (`23 product pages found, captured first 6`), so a capped row is never read as a company that only sells six things.
+- **Build ZIP** assembles `results.xlsx` and one ZIP from whatever has finished. It can be pressed mid-run, and again after re-running a failed row.
+
+The run belongs to the server, not to the browser tab: closing the tab, reloading, or coming back an hour later all pick the run back up, and a restart mid-run comes back with the finished rows still marked finished.
+
+| Route | Does |
+|---|---|
+| `POST /api/batch/job` | Creates (replaces) the job from the parsed CSV. |
+| `GET /api/batch/job` | The current job — one status and one detail per row. Polled by the UI. |
+| `POST /api/batch/job/:id/run` | Runs the whole list, or just the rows in `indexes`. Returns immediately. |
+| `POST /api/batch/job/:id/stop` | Asks the run to stop after the companies in flight finish. |
+| `POST /api/batch/job/:id/export` | Builds `results.xlsx` and `batches/batch.zip`. |
+
+The FlowHunt API key is sent to the server and never comes back out — the job state the UI polls carries no settings at all.
 
 ---
 
@@ -129,8 +158,10 @@ Everything below exists to fix one of those failure modes.
 |---|---|
 | `capture.js` | The engine. Owns the browser and the stabilisation pipeline. |
 | `stitch.js` | Scroll-and-stitch capture — the part that actually produces the image. |
-| `server.js` | Express server. Streams progress to the UI as newline-delimited JSON. |
-| `public/index.html` | The UI — URL box, viewport selector, live log, inline preview. |
+| `server.js` | Express server. Streams a single capture as newline-delimited JSON; serves the batch job API. |
+| `batch.js` | One company end to end (`captureCompany`) and the XLSX + ZIP deliverable (`buildExport`). |
+| `jobs.js` | The background batch job: holds the run, works through it at up to 10 companies at a time. |
+| `public/index.html` | The UI — URL box, viewport selector, inline preview, and the batch table. |
 | `cli.js` | Terminal runner, for fast iteration without the UI. |
 | `verify.js` | Validation tool. Renders evenly-spaced crops of a capture to eyeball. |
 | `blankcheck.js` | Validation tool. Reports blank horizontal bands as a % of page height. |

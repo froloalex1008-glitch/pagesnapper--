@@ -46,7 +46,10 @@
   #log{font:12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
     max-height:280px;overflow:auto;white-space:pre-wrap;margin:0}
   #log b{color:var(--fg);font-weight:400}
-  .hidden{display:none}
+  /* !important because several of the things it hides carry their own display
+     rule further down the sheet (.dlbtn), which would otherwise win on source
+     order and leave a "Download ZIP" button pointing at nothing. */
+  .hidden{display:none!important}
   .stats{display:flex;gap:22px;flex-wrap:wrap;margin:0;font-size:13px;color:var(--muted)}
   .stats b{color:var(--fg);font-weight:600}
   /* --stack-gap drives BOTH the stats->buttons gap and the buttons->note gap,
@@ -54,7 +57,7 @@
   .outhead{display:flex;justify-content:space-between;align-items:flex-start;
     gap:var(--stack-gap);flex-wrap:wrap}
   .btnrow{display:flex;gap:8px;flex-wrap:wrap}
-  .dlbtn{background:var(--ok);white-space:nowrap}
+  .dlbtn{background:var(--ok);white-space:nowrap;display:inline-block}
   .openbtn{background:transparent;border:1px solid var(--line);color:var(--fg);white-space:nowrap}
   .openbtn:hover{border-color:var(--accent)}
   .dlbtn:disabled{opacity:.6}
@@ -106,6 +109,46 @@
   .summary summary .n{color:var(--muted)}
   .summary ul{margin:10px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
   .summary a{color:var(--accent)}
+
+  /* ── Batch table ──────────────────────────────────────────────────────────
+     The CSV is shown as what it is — a table — instead of scrolling past as
+     log lines. One row per company, its own status and its own Run button, so
+     a single failed company can be retried without redoing the list. */
+  .tablewrap{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:9px}
+  table.rows{border-collapse:collapse;width:100%;font-size:13px}
+  table.rows th{position:sticky;top:0;background:#0d1117;color:var(--muted);text-align:left;
+    font-weight:600;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;
+    padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1}
+  table.rows td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.rows tr:last-child td{border-bottom:0}
+  table.rows tbody tr.r:hover{background:#0d1117}
+  td.num{color:var(--muted);width:44px;font-variant-numeric:tabular-nums}
+  td.act{width:1%;white-space:nowrap;text-align:right}
+  td.cell{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;
+    border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .badge.running{color:var(--accent);border-color:var(--accent)}
+  .badge.queued{color:var(--fg)}
+  .badge.done{color:var(--ok);border-color:#27492f}
+  .badge.failed{color:var(--err);border-color:#5c2b28}
+  .badge.stopped{color:var(--warn);border-color:#5c4620}
+  .minibtn{background:transparent;border:1px solid var(--line);color:var(--muted);
+    padding:4px 10px;font-size:12px;font-weight:500;border-radius:6px}
+  .minibtn:hover:not(:disabled){border-color:var(--accent);color:var(--fg)}
+  tr.detail td{background:#0b0e13;color:var(--muted);font-size:12.5px;padding:12px 14px}
+  tr.detail dl{display:grid;grid-template-columns:132px 1fr;gap:5px 14px;margin:0}
+  tr.detail dt{color:var(--muted);font-weight:600}
+  tr.detail dd{margin:0;color:var(--fg);overflow-wrap:anywhere}
+  tr.detail code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--fg)}
+  tr.detail .warn{color:var(--warn)}
+  tr.detail .bad{color:var(--err)}
+  .bar{height:6px;background:#0d1117;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex:1;min-width:160px}
+  .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .toolbar .spacer{flex:1}
+  .num-in{width:76px}
+  input[type=number]{background:#0d1117;border:1px solid var(--line);color:var(--fg);
+    padding:9px 10px;border-radius:8px;font-size:14px}
 </style>
 </head>
 <body>
@@ -198,10 +241,12 @@
     <div class="card">
       <p class="hint" style="margin-top:0">
         Give it a FlowHunt flow and a CSV of companies (one per line — name and/or website, extra
-        columns are fine). For each company the flow finds the homepage, about-us and services
-        pages; each is captured full-page as JPEG into a folder named after the company, and the
-        ZIP contains those folders plus a results.xlsx index.
+        columns are fine). The CSV is loaded into the table below; run the whole list or any single
+        row. For each company the flow finds the homepage, about-us and product pages, each is
+        captured full-page as JPEG into a folder named after the company, and the ZIP contains
+        those folders plus a results.xlsx index.
       </p>
+      <div style="height:18px"></div>
 
       <div class="field" style="margin-bottom:14px">
         <label for="bhApiKey">FlowHunt API key</label>
@@ -217,44 +262,55 @@
         <select id="bhFlow" disabled><option>Load flows first</option></select>
       </div>
 
-      <div class="field" style="margin-bottom:6px">
-        <label for="bhCsv">CSV of companies (one per line — name and/or website)</label>
-        <input id="bhCsv" type="file" accept=".csv,text/csv">
+      <div class="row" style="margin-bottom:6px;align-items:flex-end">
+        <div class="field grow">
+          <label for="bhCsv">CSV of companies (one per line — name and/or website)</label>
+          <input id="bhCsv" type="file" accept=".csv,text/csv">
+        </div>
+        <div class="field">
+          <label for="bhParallel">Parallel runs</label>
+          <input id="bhParallel" class="num-in" type="number" min="1" max="10" step="1" value="3">
+        </div>
       </div>
       <p class="filecount" id="bhCount"></p>
-
-      <div class="field" style="margin-top:14px;margin-bottom:6px">
-        <label for="bhMaxProducts">Product pages per company (0 = every one found)</label>
-        <input id="bhMaxProducts" type="number" min="0" step="1" value="0" style="max-width:120px">
-        <p class="filecount" style="margin-top:6px">
-          Every product page is captured by default. Each one costs roughly
-          20–30s and 1.5–2.5&nbsp;MB, so a company with a long catalogue can
-          take several minutes on its own — set a number here to limit it.
-        </p>
-      </div>
-
-      <!-- A run that was interrupted is continued by simply running the same
-           CSV again; this is the escape hatch for when you want it redone. -->
-      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
-        <input id="bhFresh" type="checkbox">
-        Start over (ignore saved progress for this list)
-      </label>
-
-      <div class="row" style="margin-top:16px;margin-bottom:0">
-        <button id="bhRun" type="button" disabled>Run batch</button>
-      </div>
+      <p class="filecount" style="margin-top:10px">
+        <b>Parallel runs</b> is how many companies are captured at the same time — each one holds
+        its own browser, so 3–4 suits a laptop and 10 (the maximum) needs a machine with the RAM
+        to match. Every company gets its homepage, its about-us page and up to six product pages;
+        where it has more, the row's warnings say how many were found.
+      </p>
     </div>
 
-    <div class="card hidden" id="bhLogCard"><p id="bhLog"></p></div>
+    <div class="card hidden" id="bhTableCard">
+      <div class="toolbar">
+        <button id="bhRunAll" type="button">Run all</button>
+        <button id="bhRunRest" type="button" class="minibtn" style="padding:11px 16px">Run unfinished</button>
+        <button id="bhStop" type="button" class="minibtn hidden" style="padding:11px 16px">Stop</button>
+        <div class="spacer"></div>
+        <div class="stats" id="bhCounts"></div>
+      </div>
+      <div class="bar" style="margin-bottom:14px"><i id="bhBar"></i></div>
+      <div class="tablewrap">
+        <table class="rows">
+          <thead id="bhHead"></thead>
+          <tbody id="bhBody"></tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="card hidden" id="bhOut">
       <div class="outhead">
         <div class="stats" id="bhStats"></div>
         <div class="btnrow">
-          <a id="bhDl" class="dlbtn openbtn" style="text-decoration:none;display:inline-block" href="#" download>⬇ Download ZIP</a>
+          <button id="bhExport" type="button" class="openbtn">Build ZIP</button>
+          <a id="bhDl" class="dlbtn openbtn hidden" style="text-decoration:none" href="#" download>⬇ Download ZIP</a>
         </div>
       </div>
-      <div class="summary" id="bhSummary"></div>
+      <p class="filecount" id="bhExportNote" style="margin-top:12px">
+        Builds results.xlsx and one ZIP from whatever has finished so far. Re-run a row and press
+        it again to rebuild — the ZIP has a fixed name and is overwritten each time, so the disk
+        never grows past one run.
+      </p>
     </div>
   </div><!-- /batchView -->
 </div>
@@ -429,45 +485,48 @@ document.querySelectorAll('.tab').forEach((t) => {
   };
 });
 
-/* ---------- batch (FlowHunt) ---------- */
-const bhLog = $('bhLog');
-function bhLine(text, cls) {
-  const t = new Date().toLocaleTimeString('en-GB');
-  bhLog.insertAdjacentHTML('beforeend',
-    `<span class="${cls||''}">${t}  ${cls==='err'?'':'<b>'}${text}${cls==='err'?'':'</b>'}</span>\n`);
-  bhLog.parentElement.scrollTop = bhLog.parentElement.scrollHeight;
-}
+/* ---------- batch (FlowHunt) ----------
+   The CSV becomes a table, and the run becomes a job the server owns. There is
+   no log and no long-lived request: the browser posts the list once, asks the
+   server to run all of it or one row of it, and polls for state. Closing the
+   tab no longer stops anything. */
 
-let bhHomepages = [];
+let bhRows = [];        // { raw, cells } straight from the CSV
+let bhHeaders = [];     // column names, when the CSV had a header row
+let bhJob = null;       // last state polled from the server
+let bhPoll = null;
+const bhOpen = new Set();   // rows whose detail panel is expanded
 
 /* Each row of the CSV is one company, and the WHOLE row is what gets sent to
    the agent — "ACME LTD, DE, 7219, www.acme.com, DE123456". That is deliberate:
    the agent takes a business name or a URL and finds the site itself, the extra
    identifiers help it pick the right company, and the same string becomes the
    folder name and the flow_input column in the exported spreadsheet.
-   A plain list of URLs still works — a one-column CSV is just a short row. */
+   A plain list of URLs still works — a one-column CSV is just a short row.
+
+   The individual fields are now split out as well, but only so the table can
+   show columns. What is sent to the agent is still the untouched line. */
+function splitCsvLine(l) {
+  const out = [];
+  let cur = '', inQuotes = false;
+  for (let i = 0; i < l.length; i++) {
+    const c = l[i];
+    if (c === '"') {
+      if (inQuotes && l[i + 1] === '"') { cur += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes) {
+      out.push(cur.trim()); cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 function parseCompanyRows(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return [];
-
-  /* Only used to decide whether row 1 is a header. The rows themselves are
-     passed through whole, commas and all, so no field-splitting is needed for
-     the payload — just for this check. */
-  const firstCell = (l) => {
-    let cur = '', inQuotes = false;
-    for (let i = 0; i < l.length; i++) {
-      const c = l[i];
-      if (c === '"') {
-        if (inQuotes && l[i + 1] === '"') { cur += '"'; i++; }
-        else inQuotes = !inQuotes;
-      } else if (c === ',' && !inQuotes) {
-        break;
-      } else {
-        cur += c;
-      }
-    }
-    return cur.trim();
-  };
+  if (!lines.length) return { headers: [], rows: [] };
 
   /* Deciding whether row 1 is a header is the one place this parser can lose
      data, so it errs towards keeping the row. Dropping a real company is
@@ -489,7 +548,7 @@ function parseCompanyRows(text) {
   const HEADER_WORD = /(^|[\s_\-])(url|urls|homepage|website|web|site|domain|company|name|business|flow_input|input|vat|country)([\s_\-]|$)/i;
 
   const head = lines[0];
-  const headCell = firstCell(head);
+  const headCell = splitCsvLine(head)[0] || '';
   const rowNamesASite = head.split(/[,;]/).some((c) => looksUrl(c.trim()));
   const isHeader =
     !rowNamesASite
@@ -497,43 +556,74 @@ function parseCompanyRows(text) {
     && headCell.length <= 40
     && HEADER_WORD.test(headCell);
 
+  const headers = isHeader ? splitCsvLine(head) : [];
   const rows = [];
+  const seen = new Set();
   for (let i = isHeader ? 1 : 0; i < lines.length; i++) {
     // Strip a wrapping pair of quotes if the whole row is quoted, but keep the
     // interior intact — the commas are part of the company identifier.
-    const row = lines[i].replace(/^"(.*)"$/s, '$1').trim();
-    if (row) rows.push(row);
+    const raw = lines[i].replace(/^"(.*)"$/s, '$1').trim();
+    if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    rows.push({ raw, cells: splitCsvLine(raw) });
   }
-  return [...new Set(rows)];
+  return { headers, rows };
 }
 
 $('bhCsv').onchange = async () => {
   const file = $('bhCsv').files[0];
-  if (!file) { bhHomepages = []; $('bhCount').textContent = ''; return; }
+  if (!file) { bhRows = []; bhHeaders = []; $('bhCount').textContent = ''; updateRunEnabled(); return; }
   const text = await file.text();
-  bhHomepages = parseCompanyRows(text);
-  $('bhCount').innerHTML = bhHomepages.length
-    ? `<b>${bhHomepages.length}</b> company row(s) found`
+  const parsed = parseCompanyRows(text);
+  bhRows = parsed.rows;
+  bhHeaders = parsed.headers;
+  $('bhCount').innerHTML = bhRows.length
+    ? `<b>${bhRows.length}</b> company row(s) loaded`
     : 'Nothing recognised in that file — expecting one company per line (name and/or website, extra columns are fine)';
+  bhJob = null;
+  bhOpen.clear();
+  /* Shown from the CSV alone, before anything is sent anywhere: the point of
+     the table is to see what will run before running it. */
+  if (bhRows.length) renderTable(localJobShape());
+  else $('bhTableCard').classList.add('hidden');
+  $('bhOut').classList.add('hidden');
   updateRunEnabled();
 };
 
+/* The table before the server has a job: every row pending, nothing to poll. */
+const localJobShape = () => ({
+  id: null, headers: bhHeaders, running: false, stopping: false,
+  counts: { total: bhRows.length, pending: bhRows.length, done: 0, failed: 0, running: 0, queued: 0, stopped: 0 },
+  rows: bhRows.map((r, i) => ({ index: i, company: r.raw, cells: r.cells, status: 'pending', detail: null, error: '' })),
+});
+
 function updateRunEnabled() {
-  const flowSelected = $('bhFlow').value && !$('bhFlow').disabled;
-  $('bhRun').disabled = !(flowSelected && bhHomepages.length);
+  const ready = Boolean($('bhFlow').value && !$('bhFlow').disabled && bhRows.length);
+  const running = Boolean(bhJob?.running);
+  $('bhRunAll').disabled = !ready || running;
+  $('bhRunRest').disabled = !ready || running;
+  $('bhStop').classList.toggle('hidden', !running);
+  document.querySelectorAll('button.rowrun').forEach((b) => { b.disabled = !ready || running; });
 }
 
 /* What the server has in its .env. When a key is configured there, the fields
    may be left blank — the server fills them in — and the flow list loads on
    its own with the configured flow preselected. */
-let bhDefaults = { hasApiKey: false, hasWorkspaceId: false, flowId: '' };
+let bhDefaults = { hasApiKey: false, hasWorkspaceId: false, flowId: '', maxConcurrency: 10, defaultConcurrency: 3 };
 (async () => {
   try {
     bhDefaults = await (await fetch('/api/flowhunt/defaults')).json();
     if (bhDefaults.hasApiKey) $('bhApiKey').placeholder = 'Using API key from server .env (paste one to override)';
     if (bhDefaults.hasWorkspaceId) $('bhWorkspace').placeholder = 'Workspace from .env';
+    if (bhDefaults.maxConcurrency) $('bhParallel').max = bhDefaults.maxConcurrency;
+    if (bhDefaults.defaultConcurrency) $('bhParallel').value = bhDefaults.defaultConcurrency;
     if (bhDefaults.hasApiKey && bhDefaults.hasWorkspaceId) $('bhLoadFlows').click();
   } catch { /* no defaults — the user types everything in, as before */ }
+  /* A run started before this page was opened (or before it was reloaded) is
+     still going on the server. Pick it up rather than showing an empty tab. */
+  await refresh();
+  if (bhJob) { bhRows = bhJob.rows.map((r) => ({ raw: r.company, cells: r.cells })); bhHeaders = bhJob.headers || []; renderTable(bhJob); }
+  if (bhJob?.running) startPolling();
 })();
 
 $('bhLoadFlows').onclick = async () => {
@@ -574,107 +664,198 @@ $('bhLoadFlows').onclick = async () => {
 };
 $('bhFlow').onchange = updateRunEnabled;
 
-$('bhRun').onclick = async () => {
-  const apiKey = $('bhApiKey').value.trim();
-  const workspaceId = $('bhWorkspace').value.trim();
-  const flowId = $('bhFlow').value;
-  if ((!apiKey && !bhDefaults.hasApiKey) || !flowId || !bhHomepages.length) return;
+/* Everything the server needs to run, sent with every call so a changed
+   parallelism or product cap takes effect on the next run without reloading
+   the CSV. The API key goes no further than the server. */
+const bhSettings = () => ({
+  apiKey: $('bhApiKey').value.trim(),
+  workspaceId: $('bhWorkspace').value.trim() || undefined,
+  flowId: $('bhFlow').value,
+  concurrency: $('bhParallel').value,
+});
 
-  const btn = $('bhRun');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Running batch';
-  $('bhLogCard').classList.remove('hidden');
-  $('bhOut').classList.add('hidden');
-  bhLog.textContent = '';
-  bhLine(`starting batch — ${bhHomepages.length} company(ies)…`);
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
 
+/* Creates the job if the loaded CSV is not the one the server is holding. The
+   server keys its working directory by the company list, so this is also what
+   frees the previous run's screenshots. */
+async function ensureJob() {
+  const sameList = bhJob
+    && bhJob.rows.length === bhRows.length
+    && bhJob.rows.every((r, i) => r.company === bhRows[i].raw);
+  if (sameList) return bhJob;
+  const { job } = await api('/api/batch/job', { rows: bhRows, headers: bhHeaders, ...bhSettings() });
+  bhJob = job;
+  return job;
+}
+
+async function run(indexes) {
   try {
-    const res = await fetch('/api/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      /* `fresh` discards any saved progress for this exact company list and
-         starts over. Off unless the box is ticked, so the normal case — a run
-         that was interrupted and is being started again — picks up where it
-         stopped instead of repeating hours of captures. */
-      body: JSON.stringify({
-        apiKey, flowId, urls: bhHomepages,
-        workspaceId: workspaceId || undefined,
-        fresh: $('bhFresh')?.checked || false,
-        maxProducts: $('bhMaxProducts')?.value ?? undefined,
-      }),
-    });
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '';
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split('\n');
-      buf = parts.pop();
-      for (const p of parts) {
-        if (!p.trim()) continue;
-        const msg = JSON.parse(p);
-        if (msg.type === 'log') bhLine(msg.message);
-        if (msg.type === 'error') bhLine('ERROR: ' + msg.message, 'err');
-        if (msg.type === 'done') bhRender(msg.result);
-      }
-    }
+    const job = await ensureJob();
+    const { job: started } = await api(`/api/batch/job/${job.id}/run`, { indexes, ...bhSettings() });
+    bhJob = started;
+    renderTable(bhJob);
+    startPolling();
   } catch (err) {
-    bhLine('ERROR: ' + err.message, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run batch';
+    alert('Could not start: ' + err.message);
   }
+}
+
+/* "Run all" means every row, finished ones included — the escape hatch for a
+   list that was captured against the wrong flow. "Run unfinished" is the
+   normal way back into an interrupted run: the server skips nothing itself,
+   so the choice of which rows to redo is made here. */
+$('bhRunAll').onclick = () => run(bhRows.map((_, i) => i));
+$('bhRunRest').onclick = () => run(null);
+$('bhStop').onclick = async () => {
+  if (!bhJob?.id) return;
+  $('bhStop').disabled = true;
+  try { const { job } = await api(`/api/batch/job/${bhJob.id}/stop`); bhJob = job; renderTable(job); }
+  catch (err) { alert(err.message); }
+  finally { $('bhStop').disabled = false; }
 };
 
-function bhRender(r) {
-  const mb = (r.bytes / 1024 / 1024).toFixed(2);
-  const verified = r.rows.filter((x) => /^verified$/i.test(x.status)).length;
-  $('bhStats').innerHTML = `
-    <div>Companies <b>${r.totalCompanies}</b></div>
-    <div>Verified <b>${verified}</b></div>
-    <div>Image files <b>${r.totalShots}</b></div>
-    <div>Pages documented <b>${r.pagesDocumented ?? r.totalShots}</b></div>
-    <div>Product pages <b>${r.productShots ?? 0}</b></div>
-    <div>ZIP <b>${mb} MB</b></div>`;
-  $('bhDl').href = '/batches/' + r.zipFile;
-  $('bhDl').textContent = '⬇ Download ' + r.zipFile;
+async function refresh() {
+  try {
+    const { job } = await (await fetch('/api/batch/job')).json();
+    if (!job) return null;
+    bhJob = job;
+    return job;
+  } catch { return null; }
+}
 
-  /* The screenshots live only inside the zip now (one folder per company), so
-     there is nothing to link to per page — list what was captured instead, and
-     surface the summary the agent wrote, which is the other half of what the
-     reviewer is checking. */
-  const COLS = [
-    ['homepage_screenshot_link', 'homepage'],
-    ['about_us_screenshot_link', 'about us'],
-    ['services_screenshot_link', 'services'],
-  ];
-  $('bhSummary').innerHTML = r.rows.map((row) => {
-    const shots = COLS.map(([col, name]) => {
-      const v = row[col];
-      if (!v) return `<li class="n">${name} — not found</li>`;
-      if (v === 'failed to capture') return `<li class="err">${name} — failed to capture</li>`;
-      /* The services cell holds every product page, separated by "; " — list
-         them one per line rather than as one unreadable run-on path. */
-      const paths = String(v).split('; ').filter(Boolean);
-      if (paths.length > 1) {
-        return `<li>${name} (${paths.length}) —<ul>`
-          + paths.map((p) => `<li><code>${esc(p)}</code></li>`).join('') + '</ul></li>';
-      }
-      return `<li>${name} — <code>${esc(paths[0] || v)}</code></li>`;
-    }).join('');
-    const summary = row.business_summarization
-      ? `<li style="margin-top:8px">${esc(row.business_summarization)}</li>` : '';
-    const warns = row.warnings ? `<li class="n">⚠ ${esc(row.warnings)}</li>` : '';
-    const err = row.error ? `<li class="err">${esc(row.error)}</li>` : '';
-    const cls = /^verified$/i.test(row.status) ? 'n' : 'n err';
-    return `<details><summary>${esc(row.flow_input)} <span class="${cls}">— ${esc(row.status)}</span></summary>`
-      + `<ul>${shots}${warns}${summary}${err}</ul></details>`;
+/* One poll every second and a half while something is in flight. Cheap — the
+   payload is a status per row — and it stops the moment the run does. */
+function startPolling() {
+  clearInterval(bhPoll);
+  bhPoll = setInterval(async () => {
+    const job = await refresh();
+    if (!job) { clearInterval(bhPoll); return; }
+    renderTable(job);
+    if (!job.running) { clearInterval(bhPoll); bhPoll = null; }
+  }, 1500);
+}
+
+const STATUS_TEXT = {
+  pending: 'not run', queued: 'queued', running: 'running',
+  done: 'done', failed: 'failed', stopped: 'stopped',
+};
+
+function renderTable(job) {
+  $('bhTableCard').classList.remove('hidden');
+  const headers = (job.headers?.length ? job.headers : ['company']).slice(0, 6);
+
+  $('bhHead').innerHTML = '<tr><th>#</th><th>Status</th>'
+    + headers.map((h) => `<th>${esc(h)}</th>`).join('')
+    + '<th></th></tr>';
+
+  $('bhBody').innerHTML = job.rows.map((r) => {
+    const cells = (r.cells?.length ? r.cells : [r.company]);
+    const tds = headers.map((_, i) => `<td class="cell" title="${esc(cells[i] || '')}">${esc(cells[i] || '')}</td>`).join('');
+    const open = bhOpen.has(r.index);
+    const canDetail = Boolean(r.detail || r.error);
+    const main = `<tr class="r" data-i="${r.index}">`
+      + `<td class="num">${r.index + 1}</td>`
+      + `<td><span class="badge ${r.status}">${STATUS_TEXT[r.status] || r.status}</span></td>`
+      + tds
+      + `<td class="act">`
+      + (canDetail ? `<button type="button" class="minibtn rowdetail" data-i="${r.index}">${open ? 'Hide' : 'Details'}</button> ` : '')
+      + `<button type="button" class="minibtn rowrun" data-i="${r.index}">${r.status === 'done' ? 'Re-run' : 'Run'}</button>`
+      + `</td></tr>`;
+    return main + (open ? detailRow(r, headers.length + 3) : '');
   }).join('');
 
-  $('bhOut').classList.remove('hidden');
+  $('bhBody').querySelectorAll('button.rowrun').forEach((b) => {
+    b.onclick = () => run([Number(b.dataset.i)]);
+  });
+  $('bhBody').querySelectorAll('button.rowdetail').forEach((b) => {
+    b.onclick = () => {
+      const i = Number(b.dataset.i);
+      if (bhOpen.has(i)) bhOpen.delete(i); else bhOpen.add(i);
+      renderTable(bhJob || job);
+    };
+  });
+
+  const c = job.counts || {};
+  const finished = (c.done || 0) + (c.failed || 0);
+  $('bhCounts').innerHTML = `
+    <div>Rows <b>${c.total || 0}</b></div>
+    <div>Done <b>${c.done || 0}</b></div>
+    ${c.failed ? `<div>Failed <b class="err">${c.failed}</b></div>` : ''}
+    ${c.running ? `<div>Running <b>${c.running}</b></div>` : ''}
+    ${job.stopping ? '<div class="note">stopping…</div>' : ''}`;
+  $('bhBar').style.width = c.total ? `${Math.round((finished / c.total) * 100)}%` : '0';
+
+  /* The ZIP is worth offering the moment anything has finished — a run of 181
+     companies should not have to complete before the first 40 can be looked
+     at. */
+  $('bhOut').classList.toggle('hidden', !(c.done || c.failed));
+  updateRunEnabled();
 }
+
+/* The per-row replacement for the log: what the flow decided, what was
+   captured, and anything a reviewer should look at before trusting the row. */
+function detailRow(r, span) {
+  const d = r.detail;
+  const item = (label, html) => `<dt>${label}</dt><dd>${html}</dd>`;
+  const shot = (v) => (v && v !== 'failed to capture'
+    ? `<code>${esc(v)}</code>`
+    : `<span class="${v ? 'bad' : ''}">${v ? 'failed to capture' : 'not found'}</span>`);
+
+  let body = '';
+  if (d) {
+    body += item('Flow status', esc(d.status || '—'));
+    body += item('Homepage', shot(d.homepage));
+    body += item('About us', shot(d.aboutUs));
+    body += item(`Product pages (${d.productPages})`, d.products.length
+      ? d.products.map((p) => `<code>${esc(p)}</code>`).join('<br>')
+      : '<span>none</span>');
+    if (d.businessType) body += item('Business type', esc(d.businessType));
+    if (d.summary) body += item('Summary', esc(d.summary));
+    if (d.warnings) body += item('Warnings', `<span class="warn">${esc(d.warnings)}</span>`);
+    if (d.error) body += item('Errors', `<span class="bad">${esc(d.error)}</span>`);
+  } else if (r.error) {
+    body += item('Error', `<span class="bad">${esc(r.error)}</span>`);
+  }
+  return `<tr class="detail"><td colspan="${span}"><dl>${body}</dl></td></tr>`;
+}
+
+$('bhExport').onclick = async () => {
+  if (!bhJob?.id) return;
+  const btn = $('bhExport');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Building';
+  try {
+    const r = await api(`/api/batch/job/${bhJob.id}/export`);
+    const mb = (r.bytes / 1024 / 1024).toFixed(2);
+    $('bhStats').innerHTML = `
+      <div>Companies <b>${r.totalCompanies}</b></div>
+      <div>Image files <b>${r.totalShots}</b></div>
+      <div>Pages documented <b>${r.pagesDocumented ?? r.totalShots}</b></div>
+      <div>Product pages <b>${r.productShots ?? 0}</b></div>
+      <div>ZIP <b>${mb} MB</b></div>`;
+    /* The zip name is fixed and the file is overwritten on every export, so a
+       plain link would hand back whatever the browser cached from the last
+       one. The timestamp is only there to defeat that. */
+    $('bhDl').href = `/batches/${r.zipFile}?t=${Date.now()}`;
+    $('bhDl').textContent = `⬇ Download ${r.zipFile}`;
+    $('bhDl').classList.remove('hidden');
+  } catch (err) {
+    alert('Could not build the ZIP: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Build ZIP';
+  }
+};
 </script>
 </body>
 </html>

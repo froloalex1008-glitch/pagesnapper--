@@ -18,7 +18,7 @@ import { openZip } from './unzip.js';
 import { startTestSite } from './testsite.js';
 import { parseAgentResult } from '../flowhunt.js';
 import { discoverProductLinks, neverAProduct } from '../discover.js';
-import { folderNameFor, domainFromCompany, sameSite, BATCH_DIR } from '../batch.js';
+import { folderNameFor, domainFromCompany, sameSite, BATCH_DIR, pruneBatchDir, MAX_PRODUCTS_PER_COMPANY } from '../batch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let passed = 0, failed = 0;
@@ -298,7 +298,7 @@ const stubPath = path.join(__dirname, '.flowhunt.stub.mjs');
    disk long enough for them to be committed to the repo. Synchronous, because
    'exit' handlers cannot await. */
 process.on('exit', () => {
-  for (const f of ['.flowhunt.stub.mjs', '.batch.stub.mjs']) {
+  for (const f of ['.flowhunt.stub.mjs', '.batch.stub.mjs', '.jobs.stub.mjs']) {
     try { fsSync.rmSync(path.join(__dirname, f), { force: true }); } catch { /* nothing to clean */ }
   }
 });
@@ -439,9 +439,111 @@ await test('resumes an interrupted run instead of repeating it', async () => {
   );
 });
 
+console.log('\nparallel job runner');
+
+/* jobs.js is imported through the same stub trick, so its captureCompany is
+   the stubbed batch module's rather than the real FlowHunt-backed one. */
+const jobsSrc = (await fs.readFile(path.join(__dirname, '..', 'jobs.js'), 'utf8'))
+  .replace("from './batch.js'", `from ${asSpecifier(batchStub)}`);
+const jobsStub = path.join(__dirname, '.jobs.stub.mjs');
+await fs.writeFile(jobsStub, jobsSrc, 'utf8');
+const jobs = await import(pathToFileURL(jobsStub).href);
+
+await test('caps product pages at six and offers no way to change it', () => {
+  assert.equal(MAX_PRODUCTS_PER_COMPANY, 6);
+  /* The point is that it is not a knob. If a maxProducts option ever comes
+     back, a run could quietly document a company as having three products
+     because someone typed 3 into a field, and nothing in the spreadsheet would
+     say so. */
+  const src = fsSync.readFileSync(path.join(__dirname, '..', 'batch.js'), 'utf8');
+  assert.ok(!/maxProducts/.test(src), 'batch.js still accepts a maxProducts option');
+  for (const f of ['jobs.js', 'server.js', 'public/index.html']) {
+    const t = fsSync.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.ok(!/maxProducts/i.test(t), `${f} still passes a product-page limit around`);
+  }
+});
+
+await test('caps parallelism at 10 however it is asked for', () => {
+  assert.equal(jobs.clampConcurrency(50), 10);
+  assert.equal(jobs.clampConcurrency('7'), 7);
+  assert.equal(jobs.clampConcurrency(0), jobs.DEFAULT_CONCURRENCY);
+  assert.equal(jobs.clampConcurrency(-3), 1);
+  assert.equal(jobs.clampConcurrency('nonsense'), jobs.DEFAULT_CONCURRENCY);
+});
+
+await test('runs companies in parallel and reports per-row detail', async () => {
+  const PAR = ['PAR ONE KFT, HU, 7219, localhost, HU1', 'PAR TWO LTD, SK, 6201, localhost, SK2'];
+  const job = jobs.createJob({
+    companies: PAR,
+    headers: ['company_name', 'country', 'nace', 'website', 'vat_id'],
+    cells: PAR.map((r) => r.split(',').map((c) => c.trim())),
+    settings: { apiKey: 'x', flowId: 'f1', workspaceId: 'w', width: 1440, concurrency: 2 },
+  });
+  assert.equal(job.settings.concurrency, 2);
+
+  jobs.startJob(job);
+  /* startJob returns before the work does — that IS the feature. Wait for the
+     job to finish the way the UI does, by asking for its state. */
+  let seenParallel = false;
+  while (jobs.getJob().running) {
+    if (jobs.countRows(jobs.getJob()).running > 1) seenParallel = true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(seenParallel, 'both companies should have been in flight at the same time');
+
+  const pub = jobs.publicJob(jobs.getJob());
+  assert.equal(pub.counts.done, 2, JSON.stringify(pub.rows.map((r) => [r.status, r.error])));
+  for (const r of pub.rows) {
+    assert.ok(r.detail, 'a finished row must carry its detail instead of a log');
+    assert.ok(r.detail.homepage, `${r.company} has no homepage screenshot`);
+    assert.equal(r.detail.products.length, 5, 'the test site has five product pages, under the cap of six');
+  }
+  /* The API key must never travel back to the browser. */
+  assert.ok(!JSON.stringify(pub).includes('apiKey'), 'publicJob leaked the settings');
+});
+
+await test('re-running one row replaces its folder instead of adding to it', async () => {
+  const job = jobs.getJob();
+  const dir = path.join(BATCH_DIR, 'work', 'export', job.rows[0].folder);
+  /* A file left over from an earlier, longer run — product_9 from a run that
+     found nine products where this one finds two. Left behind, it ships in the
+     zip looking exactly like a real screenshot while no spreadsheet row points
+     at it. */
+  await fs.writeFile(path.join(dir, 'product_9.jpg'), 'stale', 'utf8');
+
+  jobs.startJob(job, { indexes: [0] });
+  while (jobs.getJob().running) await new Promise((r) => setTimeout(r, 100));
+
+  const after = await fs.readdir(dir);
+  assert.ok(!after.includes('product_9.jpg'), 'a stale screenshot survived the re-run');
+  assert.ok(after.includes('homepage.jpg'), 'the re-run should have recaptured the homepage');
+});
+
+await test('exports one zip under a fixed name, overwritten each time', async () => {
+  const first = await jobs.exportJob(jobs.getJob());
+  const second = await jobs.exportJob(jobs.getJob());
+  assert.equal(first.zipFile, second.zipFile, 'the zip name must not change between exports');
+  assert.equal(path.basename(second.zipPath), 'batch.zip');
+  const zips = (await fs.readdir(BATCH_DIR)).filter((f) => f.endsWith('.zip'));
+  assert.deepEqual(zips, ['batch.zip'], `batches dir grew: ${zips.join(', ')}`);
+  const { names } = openZip(second.zipPath);
+  assert.ok(names.includes('results.xlsx'));
+  assert.ok(!names.some((n) => /job\.json|run\.json|rows\.ndjson/.test(n)), 'bookkeeping leaked into the zip');
+});
+
+await test('prunes the timestamped zips and run- folders of older versions', async () => {
+  await fs.mkdir(path.join(BATCH_DIR, 'run-deadbeef1234'), { recursive: true });
+  await fs.writeFile(path.join(BATCH_DIR, 'batch-2026-01-01T00-00-00-000Z.zip'), 'old', 'utf8');
+  const removed = await pruneBatchDir();
+  assert.equal(removed, 2);
+  const left = (await fs.readdir(BATCH_DIR)).sort();
+  assert.deepEqual(left, ['batch.zip', 'work'], `unexpected leftovers: ${left.join(', ')}`);
+});
+
 await site.close();
 await fs.rm(stubPath, { force: true });
 await fs.rm(batchStub, { force: true });
+await fs.rm(jobsStub, { force: true });
 await fs.rm(path.join(BATCH_DIR), { recursive: true, force: true }).catch(() => {});
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

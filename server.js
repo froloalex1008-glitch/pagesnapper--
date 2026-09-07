@@ -4,11 +4,19 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { capture, SHOTS_DIR } from './capture.js';
-import { runBatch, BATCH_DIR } from './batch.js';
+import { BATCH_DIR, pruneBatchDir } from './batch.js';
+import {
+  createJob, getJob, publicJob, startJob, stopJob, exportJob, restoreJob,
+  clampConcurrency, MAX_CONCURRENCY, DEFAULT_CONCURRENCY,
+} from './jobs.js';
 import { listFlows } from './flowhunt.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
+
+/* A ceiling on the CSV, so a mis-pasted file cannot queue a hundred thousand
+   FlowHunt calls. KPMG's largest real list is 181 rows. */
+const MAX_ROWS = Number(process.env.BATCH_MAX_ROWS || 2000);
 
 /* Railway (and most container hosts) inject these. When set, the screenshots
    directory is on a remote, ephemeral disk — not the visitor's machine. */
@@ -203,7 +211,14 @@ const FH_DEFAULTS = {
 };
 /* Tells the UI what is configured without ever sending the key itself. */
 app.get('/api/flowhunt/defaults', (_req, res) => {
-  res.json({ hasApiKey: Boolean(FH_DEFAULTS.apiKey), hasWorkspaceId: Boolean(FH_DEFAULTS.workspaceId), flowId: FH_DEFAULTS.flowId });
+  res.json({
+    hasApiKey: Boolean(FH_DEFAULTS.apiKey),
+    hasWorkspaceId: Boolean(FH_DEFAULTS.workspaceId),
+    flowId: FH_DEFAULTS.flowId,
+    maxConcurrency: MAX_CONCURRENCY,
+    defaultConcurrency: DEFAULT_CONCURRENCY,
+    maxRows: MAX_ROWS,
+  });
 });
 
 app.post('/api/flowhunt/flows', async (req, res) => {
@@ -222,59 +237,107 @@ app.post('/api/flowhunt/flows', async (req, res) => {
 /* Same NDJSON-streaming pattern as /api/capture, just longer-running: expands
    every homepage via the chosen flow, screenshots every URL that comes back,
    and finishes with a link to the zipped result. */
-app.post('/api/batch', async (req, res) => {
-  const { urls, width, fresh, maxProducts } = req.body || {};
-  const apiKey = req.body?.apiKey || FH_DEFAULTS.apiKey;
-  const flowId = req.body?.flowId || FH_DEFAULTS.flowId;
-  const workspaceId = req.body?.workspaceId || FH_DEFAULTS.workspaceId;
-  res.setHeader('Content-Type', 'application/x-ndjson');
-  res.setHeader('Cache-Control', 'no-cache');
+/* ── Batch jobs ─────────────────────────────────────────────────────────────
+   The CSV is turned into a job once, and the job then lives in the server —
+   not in the request. Runs happen in the background at up to MAX_CONCURRENCY
+   companies at a time, so the browser can close, reload or come back later,
+   and every row can be run or re-run on its own. The UI polls GET
+   /api/batch/job for state instead of reading a log. */
 
-  /* A batch can run for a long time — many homepages, each expanded into
-     several URLs, each screenshotted in turn. If the browser tab closes
-     partway through, two things go wrong without this: res.write() on a
-     dead socket can throw, and — worse — the server just keeps capturing
-     every remaining URL for a client that's no longer there. isAborted()
-     lets runBatch check between iterations and stop early instead.
-     Deliberately res.on('close'), not req.on('close') — see the note in
-     /api/capture above for why req's version fires too early here. */
-  let closed = false;
-  res.on('close', () => { closed = true; });
-  const send = (obj) => { if (!closed && !res.writableEnded) res.write(JSON.stringify(obj) + '\n'); };
+/* Every route below merges what the UI sent with the server's own .env
+   defaults, in that order — a blank field falls back to .env, a filled one
+   wins. The API key never travels back out. */
+const fhSettings = (body = {}) => ({
+  apiKey: body.apiKey || FH_DEFAULTS.apiKey,
+  flowId: body.flowId || FH_DEFAULTS.flowId,
+  workspaceId: body.workspaceId || FH_DEFAULTS.workspaceId || undefined,
+  width: Number(body.width) || 1440,
+  /* Omitted rather than defaulted when the caller says nothing: a /run call
+     that does not mention parallelism must leave the job's own setting alone,
+     not quietly drop it back to the default. */
+  ...(body.concurrency === undefined || body.concurrency === ''
+    ? {} : { concurrency: clampConcurrency(body.concurrency) }),
+});
 
-  /* Each entry is a whole company row from the CSV ("ACME LTD, DE, 7219,
-     www.acme.com, DE123456"), not a bare URL — the agent accepts a business
-     name or a URL and finds the site itself, and the folder each company's
-     screenshots land in is named from this string. */
-  const companies = Array.isArray(urls) ? urls.map((u) => String(u).trim()).filter(Boolean) : [];
-  if (!apiKey || !flowId || !companies.length) {
-    send({ type: 'error', message: 'Missing apiKey, flowId, or company rows' });
-    return res.end();
-  }
+/* Creates (or replaces) the job from the parsed CSV. Replacing it is what
+   frees the previous run's screenshots: the working directory is keyed by the
+   company list, so a different list wipes it. */
+app.post('/api/batch/job', (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  const companies = rows.map((r) => String(r?.raw ?? r ?? '').trim()).filter(Boolean);
+  if (!companies.length) return res.status(400).json({ error: 'No company rows' });
+  if (companies.length > MAX_ROWS) return res.status(400).json({ error: `Too many rows (max ${MAX_ROWS})` });
 
+  const settings = fhSettings(req.body);
+  if (!settings.apiKey || !settings.flowId) return res.status(400).json({ error: 'Missing apiKey or flowId' });
+
+  const existing = getJob();
+  if (existing?.running) return res.status(409).json({ error: 'A batch is still running — stop it first' });
+
+  const job = createJob({
+    companies,
+    headers: Array.isArray(req.body?.headers) ? req.body.headers.map(String) : [],
+    cells: rows.map((r) => (Array.isArray(r?.cells) ? r.cells.map(String) : [String(r?.raw ?? r ?? '')])),
+    settings,
+  });
+  res.json({ job: publicJob(job) });
+});
+
+app.get('/api/batch/job', (_req, res) => {
+  const job = getJob();
+  if (!job) return res.json({ job: null });
+  res.json({ job: publicJob(job) });
+});
+
+/* Starts the whole list, or just the rows named in `indexes` — which is how
+   the UI's per-row "Run" button works. Returns as soon as the work is queued. */
+app.post('/api/batch/job/:id/run', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'No such job — load the CSV again' });
+  if (job.running) return res.status(409).json({ error: 'Already running' });
+
+  const settings = fhSettings(req.body);
+  if (!settings.apiKey || !settings.flowId) return res.status(400).json({ error: 'Missing apiKey or flowId' });
+
+  const indexes = Array.isArray(req.body?.indexes)
+    ? req.body.indexes.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < job.rows.length)
+    : null;
+
+  startJob(job, { indexes, concurrency: settings.concurrency, settings });
+  res.json({ job: publicJob(job) });
+});
+
+app.post('/api/batch/job/:id/stop', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'No such job' });
+  stopJob(job);
+  res.json({ job: publicJob(job) });
+});
+
+/* Builds results.xlsx and the zip from whatever has finished so far. Separate
+   from running, so a list can be exported, a few failed rows re-run, and the
+   export rebuilt without redoing the other two hundred companies. */
+app.post('/api/batch/job/:id/export', async (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'No such job' });
   try {
-    const result = await runBatch({
-      apiKey,
-      flowId,
-      companies,
-      width: Number(width) || 1440,
-      workspaceId: workspaceId || undefined,
-      /* Off by default: re-running the same list should continue it, which is
-         the whole point of resume. Set only when the user asks for a clean
-         run from the UI. */
-      fresh: Boolean(fresh),
-      /* Undefined leaves batch.js on its own default; 0 means no limit. */
-      maxProducts: maxProducts === undefined || maxProducts === '' ? undefined : Number(maxProducts),
-      onLog: (message) => send({ type: 'log', message }),
-      isAborted: () => closed,
+    const result = await exportJob(job);
+    res.json({
+      /* Deliberately not the full row objects: the UI already has every one of
+         them from polling, and a 181-row payload here is pure duplication. */
+      zipFile: result.zipFile,
+      bytes: result.bytes,
+      totalCompanies: result.totalCompanies,
+      totalShots: result.totalShots,
+      pagesDocumented: result.pagesDocumented,
+      productShots: result.productShots,
     });
-    if (!closed) send({ type: 'done', result });
   } catch (err) {
     console.error(err);
-    send({ type: 'error', message: err.message });
+    res.status(500).json({ error: err.message });
   }
-  if (!closed && !res.writableEnded) res.end();
 });
+
 
 app.get('/api/shots', async (_req, res) => {
   const names = (await fs.readdir(SHOTS_DIR).catch(() => [])).filter((f) => f.endsWith('.png'));
@@ -290,6 +353,15 @@ app.get('/api/shots', async (_req, res) => {
 /* No explicit host: Node binds dual-stack (both ::1 and 127.0.0.1 locally, and
    all interfaces in a container). Pinning to '0.0.0.0' drops the IPv6 listener,
    which breaks browsers that resolve localhost to ::1 first. */
+/* Two pieces of startup tidying, both about not carrying dead weight forever:
+   drop the timestamped zips and per-run folders an older version of this app
+   left in the batches directory, and pick up the last job's rows so a restart
+   mid-run does not offer to redo everything that already finished. */
+const removed = await pruneBatchDir();
+if (removed) console.log(`  batches: reclaimed ${removed} directory/zip(s) from older runs`);
+const restored = await restoreJob({ ...FH_DEFAULTS, width: 1440, concurrency: DEFAULT_CONCURRENCY });
+if (restored) console.log(`  batches: restored the last job (${restored.rows.length} row(s))`);
+
 app.listen(PORT, () => {
   console.log(`\n  pagesnap running → http://localhost:${PORT}`);
   console.log(`  screenshots → ${SHOTS_DIR}\n`);
