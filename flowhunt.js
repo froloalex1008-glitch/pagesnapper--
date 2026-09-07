@@ -139,7 +139,7 @@ export function extractUrls(result) {
 
      The pipe matters just as much. The agent separates several URLs in one
      field with "|", and does not always put spaces around it — a live run sent
-     "…/trapianto/…/|https://www.aferetica.com/critical-care/…" and, with "|"
+     "…/trapianto/…/|https://www.biomed.example/critical-care/…" and, with "|"
      still allowed inside a match, both URLs were read as ONE address. The
      browser then percent-encoded the pipe, requested that nonsense path, and
      got a 403 that looked like bot protection. Angle brackets are excluded for
@@ -234,7 +234,7 @@ function readStructured(result) {
   const norm = (k) => k.toLowerCase().replace(/[^a-z]/g, '');
   /* Returns EVERY url in the matched field, not just the first. The agent
      sometimes lists several in one value — a live run sent
-     "services_page_url": "https://ag-motors.pl/?lang=en#offer_b2b | https://…"
+     "services_page_url": "https://framemaker.example/?lang=en#offer_b2b | https://…"
      — and the first one happened to be the homepage with a fragment on it, so
      taking only the first meant screenshotting the homepage twice and never
      reaching the real services page. The caller walks the list and takes the
@@ -309,7 +309,7 @@ function readStructured(result) {
   /* Prefer a field that is actually a business summary over the agent's
      reasoning. Today the flow ships only "reasoning" — which exists to justify
      the Verified/Unverified verdict, not to describe the business — and we
-     have been putting that in KPMG's business_summarization column for want of
+     have been putting that in the client's business_summarization column for want of
      anything better. The moment the flow gains a real summary field this picks
      it up with no change here; until then the fallback keeps the column
      populated. Order matters: most specific first. */
@@ -363,7 +363,7 @@ function readStructured(result) {
 
 /* The agent's reply is a fixed structure (see its system message): a status
  * code, a business type, a multi-sentence summary under "Reasoning", then a
- * urls list in a fixed order — homepage, about us, services/products. KPMG's
+ * urls list in a fixed order — homepage, about us, services/products. The client's
  * requested output needs each of those in its own spreadsheet column, and each
  * screenshot filed under the page it came from, so a flat list of URLs isn't
  * enough any more.

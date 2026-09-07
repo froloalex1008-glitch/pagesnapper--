@@ -75,7 +75,7 @@ const CONSENT_TEXTS_ACCEPT = [
   /^\s*(accept[ăa]|de acord)/i,                              // ro
   /^\s*(sprejmi|se strinjam)/i,                              // sl
   /* Hungarian was missing from both tiers entirely, and it is not an exotic
-     case for this client: adexgo.hu showed "Elfogadom / Elutasítom", nothing
+     case for this client: feedadditives.example showed "Elfogadom / Elutasítom", nothing
      matched, the log said "no consent dialog found", and the banner sat across
      the bottom of every screenshot of that company. Three of the eight test
      companies were Hungarian. The rest of this block closes the same hole for
@@ -222,7 +222,7 @@ export async function capture(opts = {}) {
   // rejection so it cannot surface as an unhandled rejection and kill the process.
   deadline.catch(() => {});
   /* Surfacing >5s steps in the live log (not just the final `steps` summary) is
-     what would have made the sme.sk stall obvious immediately instead of
+     what would have made the newssite.example stall obvious immediately instead of
      needing to read the source — the log said "no consent dialog found" with
      no hint that finding that answer took several minutes. */
   const SLOW_STEP_MS = 5000;
@@ -278,7 +278,7 @@ export async function capture(opts = {}) {
       steps.push({ name: 'navigate', ms: Date.now() - t, ok: true, detail: `HTTP ${httpStatus} ${landed}` });
     }
 
-    /* 2 ── Bot-check interstitial (sme.sk sits behind Cloudflare). Wait it out. */
+    /* 2 ── Bot-check interstitial (newssite.example sits behind Cloudflare). Wait it out. */
     await step('bot-check', async () => {
       const isChallenge = async () => {
         const t = await page.title().catch(() => '');
@@ -335,7 +335,7 @@ export async function capture(opts = {}) {
        before the surrounding CSS/layout has fully settled, they can lock in a
        wrong (sometimes zero) width and never re-measure — the DOM and images
        are all there, correctly loaded, but every slide sits transformed off
-       to the side, rendering as a blank band (seen on amitek.it's Swiper.js
+       to the side, rendering as a blank band (seen on slidersite.example's Swiper.js
        hero: 43/43 images loaded, nothing wrong found, yet the banner was
        empty). A `resize` event is the standard trigger these libraries listen
        for to recompute, so fire one now that layout should be stable. */
@@ -352,7 +352,7 @@ export async function capture(opts = {}) {
        images within ~2 viewports of the current position are unlazied, so peak
        memory stays bounded regardless of how many images the page has. */
 
-    /* 6 ── Scroll passes until height stops growing. sme.sk grows ~2000px and
+    /* 6 ── Scroll passes until height stops growing. newssite.example grows ~2000px and
        doubles its image count on the first pass alone. Capped both ways. */
     const scrollInfo = await step('scroll-lazyload', async () => {
       const info = await autoScroll(page, { maxScrollRounds, maxPageHeight, log });
@@ -371,6 +371,25 @@ export async function capture(opts = {}) {
       if (c || n) log(`cleared ${n} late overlay(s)${c ? ` and a late consent dialog` : ''}`);
       if (c || n) await sleep(400);
       return { consent: c || 'none', overlays: n };
+    });
+
+    /* 6c ── Open collapsed content. Runs after the scroll pass, so widgets
+       below the fold exist and their scripts have initialised, and before the
+       image wait, so anything revealed still gets loaded and counted. */
+    const expandInfo = await step('expand-collapsed', async () => {
+      const info = await expandCollapsed(page);
+      if (info.expanded) {
+        log(`opened ${info.expanded} collapsed section(s)${info.panels ? `, revealed ${info.panels} tab panel(s)` : ''}`);
+        /* Revealed content brings its own lazy images and its own height, and
+           neither was there when the scroll pass ran. One more round is enough:
+           the sections are open now, nothing further is waiting on a click. */
+        const re = await autoScroll(page, { maxScrollRounds: 1, maxPageHeight, log });
+        log(`re-scrolled after expanding, height ${re.startHeight} → ${re.endHeight}px`);
+      }
+      if (info.carousels) {
+        log(`WARNING: ${info.carousels} carousel(s) holding ${info.hiddenSlides} off-screen slide(s) — only the visible slide is in the capture`);
+      }
+      return info;
     });
 
     /* 7 ── Fonts, then images. Tolerant: third-party ad images frequently never
@@ -402,7 +421,7 @@ export async function capture(opts = {}) {
       return 'settled';
     });
 
-    /* 9b ── fenixsystems.eu showed this happening: overlays-post-scroll clicked
+    /* 9b ── overlaysite.example showed this happening: overlays-post-scroll clicked
        "Odrzuć wszystkie ciasteczka" and it visibly closed, but the widget's own
        script re-asserted it a couple of seconds later — after images/freeze-motion
        had already run and with nothing left in the pipeline to catch it before the
@@ -421,7 +440,7 @@ export async function capture(opts = {}) {
          re-evaluate :hover against the last known cursor position on scroll,
          with no new mousemove needed — so after `settle` scrolls back to (0,0),
          some unrelated element can end up frozen mid-capture in its :hover
-         style (seen on fenixsystems.eu: a service card rendered solid black
+         style (seen on overlaysite.example: a service card rendered solid black
          instead of its normal red, sitting wherever the last click happened to
          land after the page scrolled). Parking the pointer off the page after
          all clicking is done, and before the freeze/settle-triggered capture,
@@ -516,6 +535,13 @@ export async function capture(opts = {}) {
          reviewer looking at the XLSX has no other way to know a capture came
          out with holes in it. */
       placeholders: scrollInfo?.placeholders ?? 0,
+      /* How much of the page was opened up before shooting, and how much could
+         not be. A reviewer looking at a carousel that shows two logos out of
+         twenty-five has no way to tell that from a broken capture; the count
+         goes to the spreadsheet so the row can say which it was. */
+      expanded: expandInfo?.expanded ?? 0,
+      carousels: expandInfo?.carousels ?? 0,
+      hiddenSlides: expandInfo?.hiddenSlides ?? 0,
       bytes: size,
       durationMs: Date.now() - started,
       steps,
@@ -568,7 +594,7 @@ function buildFilename(url, format = 'png') {
    This replaces an earlier version that looped patterns on the OUTSIDE and
    buttons on the inside — i.e. it re-fetched innerText()/getAttribute() for
    every button, once per regex pattern (~27 patterns). On a button/link-heavy
-   page that is O(patterns × buttons) real browser round-trips: on sme.sk,
+   page that is O(patterns × buttons) real browser round-trips: on newssite.example,
    whose first consent check found nothing via the fast selector list and fell
    through to this scan, that combination is what actually produced the
    multi-minute stall before the pipeline ever started scrolling — not the
@@ -606,7 +632,7 @@ async function dismissConsent(page) {
   };
 
   // Some CMPs (and custom-built consent widgets, e.g. the Cookiebot-style
-  // accept/reject/save-settings banner on fenixsystems.eu) mount inside an
+  // accept/reject/save-settings banner on overlaysite.example) mount inside an
   // <iframe> rather than the top document. page.locator() on `page` alone
   // never sees into that iframe, so every pass below also checks each child
   // frame — same selectors, same text patterns, just a wider search scope.
@@ -717,7 +743,7 @@ async function autoScroll(page, { maxScrollRounds, maxPageHeight, log }) {
       /* Diagnostic only, not a fix: count <img> tags whose src still looks like
          a lazy-load placeholder (a "lazy"/"placeholder"/"blank" filename, or a
          tiny inline data: URI) after the unlazy pass above ran. This is what
-         would have made the maugerimacchine.com bug (blank product photos)
+         would have made the lazyimages.example bug (blank product photos)
          visible in the log immediately — "images 141/144 loaded" alone doesn't
          distinguish "a few slow ad images" from "a lazy-loader we don't
          understand," but a nonzero placeholder count does. */
@@ -752,6 +778,114 @@ async function autoScroll(page, { maxScrollRounds, maxPageHeight, log }) {
       return { rounds, startHeight, endHeight: H(), capped, promoted, placeholders: countPlaceholders() };
     },
     { maxScrollRounds, maxPageHeight }
+  );
+}
+
+/* Accordions and tabs are captured in whatever state they load in, which is
+   "closed". biomed.example's About page came back with Mission, Collaborative
+   Research, the Lab section and The team collapsed to four one-line headings,
+   and feedadditives.example's Products page showed one of its three tabs — in both cases
+   the content a reviewer wanted was in the DOM, just not on screen. Open what
+   can be opened safely; count what cannot.
+
+   Deliberately narrow. Blanket-unhiding everything with display:none reveals
+   modals, cookie dialogs and mobile menus stacked over the page, which is a
+   worse capture than the collapsed one. */
+async function expandCollapsed(page, { budgetMs = 6000, maxClicks = 60 } = {}) {
+  return page.evaluate(
+    async ({ budgetMs, maxClicks }) => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const deadline = Date.now() + budgetMs;
+      let expanded = 0, clicks = 0;
+
+      /* Never touch site navigation. Opening every header dropdown drops a
+         wall of menu items over the top of the page and reveals nothing a
+         reviewer is looking for. */
+      const inChrome = (el) =>
+        !!el.closest('nav, header, footer, [role="navigation"], [role="banner"], .menu, .navbar, .nav-menu');
+
+      /* Clicking is what the page itself expects, so prefer it — but only
+         where a click cannot navigate away or throw a modal over the shot. */
+      const safeToClick = (el) => {
+        if (inChrome(el)) return false;
+        if (el.closest('[data-toggle="modal"], [data-bs-toggle="modal"], [data-fancybox]')) return false;
+        const a = el.closest('a[href]');
+        if (a) {
+          const href = a.getAttribute('href') || '';
+          // Same-page anchors and javascript: hooks are fine; real links are not.
+          if (href && !href.startsWith('#') && !href.startsWith('javascript:')) return false;
+        }
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+
+      // 1. <details> opens without a click at all.
+      for (const d of document.querySelectorAll('details:not([open])')) { d.open = true; expanded++; }
+
+      /* 2. The ARIA disclosure pattern, plus the class conventions of the page
+         builders these sites actually run on: Divi (feedadditives.example),
+         Avada/Fusion (biomed.example), Elementor and Bootstrap. */
+      const TOGGLES = [
+        '[aria-expanded="false"]',
+        '.et_pb_toggle:not(.et_pb_toggle_open) .et_pb_toggle_title',
+        '.fusion-panel .panel-title a.collapsed',
+        '.elementor-tab-title:not(.elementor-active)',
+        '.accordion-button.collapsed',
+        '.accordion-title:not(.active)',
+      ].join(', ');
+      for (const el of document.querySelectorAll(TOGGLES)) {
+        if (Date.now() > deadline || clicks >= maxClicks) break;
+        if (!safeToClick(el)) continue;
+        try { el.click(); clicks++; expanded++; } catch { /* inert element */ }
+        await sleep(40);
+      }
+
+      /* 3. Tabs are not accordions. Clicking each tab in turn shows one panel
+         and hides the one before it, so the reviewer still ends up with a
+         single panel — the last one, which is worse than the default. Reveal
+         the panels directly instead, matched by role or by the builders'
+         panel classes so this cannot unhide a dialog or a mobile menu. */
+      let panels = 0;
+      for (const p of document.querySelectorAll(
+        '[role="tabpanel"], .et_pb_tab, .fusion-tab-content, .tab-pane, .elementor-tab-content'
+      )) {
+        const cs = getComputedStyle(p);
+        const hidden = p.hasAttribute('hidden') || p.getAttribute('aria-hidden') === 'true'
+          || cs.display === 'none' || cs.visibility === 'hidden';
+        if (!hidden) continue;
+        p.removeAttribute('hidden');
+        p.setAttribute('aria-hidden', 'false');
+        p.style.setProperty('display', 'block', 'important');
+        p.style.setProperty('visibility', 'visible', 'important');
+        p.style.setProperty('opacity', '1', 'important');
+        p.style.setProperty('height', 'auto', 'important');
+        panels++;
+      }
+      expanded += panels;
+
+      /* 4. Carousels are NOT unrolled. A slider positions its slides with
+         inline transforms its own script owns and re-applies; forcing them
+         visible reliably breaks the page layout rather than fixing it. Count
+         them instead, so the run can say honestly that one slide of N was
+         captured — spacetech.example's partner strip showed two logos of about
+         twenty-five and nothing in the output explained why. */
+      let carousels = 0, hiddenSlides = 0;
+      for (const track of document.querySelectorAll(
+        '.swiper-wrapper, .slick-track, .splide__list, .owl-stage, .et_pb_slides, .fusion-carousel-holder, [data-carousel]'
+      )) {
+        const slides = [...track.children];
+        if (slides.length < 2) continue;
+        const box = track.getBoundingClientRect();
+        const offscreen = slides.filter((s) => {
+          const r = s.getBoundingClientRect();
+          return r.width === 0 || r.right <= box.left + 1 || r.left >= box.right - 1;
+        }).length;
+        if (offscreen > 0) { carousels++; hiddenSlides += offscreen; }
+      }
+
+      return { expanded, panels, clicks, carousels, hiddenSlides };
+    },
+    { budgetMs, maxClicks }
   );
 }
 

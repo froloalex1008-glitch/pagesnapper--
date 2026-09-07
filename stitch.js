@@ -40,7 +40,7 @@ export async function scrollAndStitch(page, {
          single scan at scrollY=0 misses them and they repeat down the image.
          The first slice keeps them — that's the page's genuine top. */
       if (hiddenChrome) {
-        /* Diagnostic only, added after cemps.ro showed a header repeating at every
+        /* Diagnostic only, added after stickyheader.example showed a header repeating at every
            slice boundary despite this logic existing. Without a count, there was no
            way to tell "this only checks position:fixed/sticky, and the header uses
            neither" apart from reading source — same blind spot SLOW_STEP_MS fixed

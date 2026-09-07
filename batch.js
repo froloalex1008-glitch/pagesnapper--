@@ -2,7 +2,7 @@
  * to find its homepage / about-us / services pages, screenshot each of those
  * with pagesnap's own capture(), and bundle everything into one ZIP.
  *
- * The output shape is dictated by what KPMG asked for (see the July feedback
+ * The output shape is dictated by what the client asked for (see the July feedback
  * mail), and differs from a plain screenshot dump in four ways:
  *   - one folder per company, named after the company, not the domain
  *   - files named for the page they show (homepage / aboutus / product),
@@ -56,8 +56,8 @@ const LINK_SEP = '; ';
    company that only sells six things. */
 export const MAX_PRODUCTS_PER_COMPANY = 6;
 
-/* Company strings arrive as a whole CSV row — "ACCELSIORS KUTATASSZERVEZO ...,
-   HU, 7219, www.accelsiors.com, HU13483498" — including commas, slashes and
+/* Company strings arrive as a whole CSV row — "EXAMPLE KUTATO ES TANACSADO ...,
+   HU, 7219, www.cro.example, HU00000000" — including commas, slashes and
    accents, none of which belong in a folder name on Windows. Trimmed to 80
    characters because the full string can run past 120 and Windows still has a
    260-character path limit that the folder, filename and wherever the user
@@ -75,8 +75,8 @@ export function folderNameFor(companyString, index) {
   return cleaned || `row_${index + 1}`;
 }
 
-/* Pulls the website out of a company row. KPMG's input rows look like
-   "AG MOTORS SP. Z O.O., PL, 7219, www.bike4u.pl, PL180504689" — one field of
+/* Pulls the website out of a company row. The client's input rows look like
+   "EXAMPLE ROWERY SP. Z O.O., PL, 7219, www.cycleshop.example, PL000000000" — one field of
    several is a domain, and which one varies.
 
    The awkward part is that company names are full of things that look like
@@ -94,8 +94,8 @@ export function domainFromCompany(companyString) {
   return '';
 }
 
-/* Registrable-ish comparison: bike4u.pl vs www.bike4u.pl vs shop.bike4u.pl all
-   count as the same company site, while ag-motors.pl does not. Deliberately
+/* Registrable-ish comparison: cycleshop.example vs www.cycleshop.example vs shop.cycleshop.example all
+   count as the same company site, while framemaker.example does not. Deliberately
    naive about multi-part TLDs (.co.uk) — it compares the last two labels,
    which for co.uk means "co.uk" on both sides and so still matches only when
    the real domain matches, because the label before it is included too. */
@@ -106,7 +106,7 @@ export function sameSite(a, b) {
 }
 
 /* One transient blip permanently loses that company's row, and on a long run
-   there will be blips — KPMG's own 181-company run had exactly one failure of
+   there will be blips — the client's own 181-company run had exactly one failure of
    this kind. So retry once.
  *
  * Only for faults that a second attempt could plausibly fix: network errors,
@@ -278,16 +278,16 @@ export async function captureCompany({
     row.business_type = parsed.businessType;
 
     /* The input row names a website; the agent sometimes screenshots a
-       different one. A live run had "www.bike4u.pl" in the CSV and
-       ag-motors.pl in the reply — plausibly the same company, but nothing in
+       different one. A live run had "www.cycleshop.example" in the CSV and
+       framemaker.example in the reply — plausibly the same company, but nothing in
        the output said the domain had changed. Across 181 rows that is how a
-       KPMG deliverable ends up containing screenshots of a company nobody
+       a client deliverable ends up containing screenshots of a company nobody
        asked about, with no way to spot which. Not an error — the agent may
        well be right — so it is recorded, not failed. */
     /* Checked across EVERY url the agent returned, not just the homepage.
-       A live run made the reason plain: for "AG MOTORS SP. Z O.O. …
-       www.bike4u.pl" the agent reported homepage_url as "failed to capture"
-       and then gave about/services pages on www.bike4u.it — an unrelated
+       A live run made the reason plain: for "EXAMPLE ROWERY SP. Z O.O. …
+       www.cycleshop.example" the agent reported homepage_url as "failed to capture"
+       and then gave about/services pages on www.cycleshop-it.example — an unrelated
        Italian bike shop. Because the homepage field held no url at all,
        a homepage-only check saw nothing to compare and stayed silent, and
        two screenshots of the wrong company went into the spreadsheet looking
@@ -385,7 +385,7 @@ export async function captureCompany({
        is almost certainly not the page anyone wanted: an error page, a
        redirect that landed nowhere, or content that failed to render. It is
        invisible in the spreadsheet, where the row looks complete and the
-       link resolves. A live run captured adexgo.hu/rolunk/ at exactly 900px
+       link resolves. A live run captured feedadditives.example/rolunk/ at exactly 900px
        and 0.03 MB — a blank card where the About page should have been —
        and nothing in the output said so. */
     if (shot?.pageHeight && shot.pageHeight <= 1000 && total === 0) {
@@ -397,11 +397,19 @@ export async function captureCompany({
     if (shot?.capped) {
       warn(`${label}: page was taller than the capture limit and is truncated`);
     }
+
+    /* A carousel shows one slide and hides the rest behind arrows nobody can
+       click in a screenshot. spacetech.example's partners strip holds ESA, Airbus,
+       Thales and about twenty more; the capture shows two of them, and looks
+       for all the world like a failed screenshot rather than a working one. */
+    if (shot?.carousels > 0) {
+      warn(`${label}: ${shot.carousels} carousel(s) — ${shot.hiddenSlides} slide(s) sit off-screen and are not in the picture`);
+    }
   };
 
   /* Compare URLs by the DOCUMENT they load, not by their exact spelling. A
-     live run captured ag-motors.pl twice — once as "https://ag-motors.pl/"
-     and once as "https://ag-motors.pl/?lang=en#offer_b2b" for the services
+     live run captured framemaker.example twice — once as "https://framemaker.example/"
+     and once as "https://framemaker.example/?lang=en#offer_b2b" for the services
      page. A fragment never changes the document the browser loads, so those
      two screenshots were the same 11000px page, 2.5MB each. Strip the hash,
      drop a lone trailing slash, and lowercase the host; keep the query,
@@ -490,7 +498,7 @@ export async function captureCompany({
   }
 
   /* ── Product pages ────────────────────────────────────────────────────
-     KPMG asked for a screenshot of every product page a company has, named
+     The client asked for a screenshot of every product page a company has, named
      product_1, product_2 and so on. Two sources, in this order:
        1. whatever the agent put in its services field — vetted, and often
           the page the company itself considers its main offering
@@ -536,7 +544,7 @@ export async function captureCompany({
         limit: MAX_PRODUCTS * 3,   // over-fetch: many will collide with what we have
         /* The agent's own product URLs, handed over so discovery can find
            their siblings. Without these, a site that names product pages
-           after the products (admatis.com) yields nothing from the site and
+           after the products (spacetech.example) yields nothing from the site and
            the row is left with whichever few the agent happened to return
            that run — a different set every time. */
         seeds: productUrls,
@@ -586,7 +594,7 @@ export async function captureCompany({
       }
     }
 
-    /* One cell, several paths. Keeps KPMG's column layout intact — a column
+    /* One cell, several paths. Keeps the client's column layout intact — a column
        per product would break the moment two companies have different
        counts, which is every run. */
     row.services_screenshot_link = productLinks.join(LINK_SEP)
@@ -613,7 +621,7 @@ export async function captureCompany({
    other companies. */
 export async function buildExport({ rows, workDir = WORK_DIR, onLog = () => {} }) {
   /* ── XLSX index ──────────────────────────────────────────────────────────
-     Column order and names follow the sample KPMG said was "way better", with
+     Column order and names follow the sample the client said was "way better", with
      two extras at the end (business_type, error) that cost nothing to include
      and answer the first question anyone asks about a row that went wrong. */
   onLog('building xlsx…');

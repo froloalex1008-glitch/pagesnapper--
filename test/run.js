@@ -129,17 +129,17 @@ await test('keeps the agent\'s explanation when a url field is not a url', () =>
 });
 
 await test('splits urls joined by a pipe with no spaces', () => {
-  /* Live bug (AFERETICA): the agent wrote two urls separated by "|" and no
+  /* Live bug (the biomedical site): the agent wrote two urls separated by "|" and no
      spaces. Both were read as one address, the browser percent-encoded the
      pipe, and the request came back 403 — which looked like bot protection. */
-  const joined = 'https://www.aferetica.com/trapianto/sistemi/|https://www.aferetica.com/critical-care/sistemi/';
+  const joined = 'https://www.biomed.example/trapianto/sistemi/|https://www.biomed.example/critical-care/sistemi/';
   const r = parseAgentResult(envelope({
     status_code: 'Verified', reasoning: 'x',
-    homepage_url: 'https://www.aferetica.com/', services_page_url: joined,
+    homepage_url: 'https://www.biomed.example/', services_page_url: joined,
   }));
   assert.equal(r.urlOptions.services.length, 2, 'both urls should be recovered');
   assert.ok(!r.urls.services.includes('|'), 'no url may contain a pipe');
-  assert.equal(r.urls.services, 'https://www.aferetica.com/trapianto/sistemi/');
+  assert.equal(r.urls.services, 'https://www.biomed.example/trapianto/sistemi/');
 });
 
 await test('reads a list of product urls, not just a string', () => {
@@ -166,9 +166,9 @@ await test('reads several product urls given one per line', () => {
 
 console.log('\ncompany row parsing');
 
-await test('pulls the website out of a KPMG company row', () => {
-  assert.equal(domainFromCompany('AG MOTORS SP. Z O.O., PL, 7219, www.bike4u.pl, PL180504689'), 'bike4u.pl');
-  assert.equal(domainFromCompany("AISICO - SOCIETA' A RESPONSABILITA' LIMITATA, IT, 7219, www.aisico.com, IT1"), 'aisico.com');
+await test('pulls the website out of a client company row', () => {
+  assert.equal(domainFromCompany('EXAMPLE ROWERY SP. Z O.O., PL, 7219, www.cycleshop.example, PL000000000'), 'cycleshop.example');
+  assert.equal(domainFromCompany("EXAMPLE SICUREZZA - SOCIETA' A RESPONSABILITA' LIMITATA, IT, 7219, www.roadsafety.example, IT00000000"), 'roadsafety.example');
 });
 
 await test('does not mistake a legal-form abbreviation for a domain', () => {
@@ -176,8 +176,8 @@ await test('does not mistake a legal-form abbreviation for a domain', () => {
 });
 
 await test('spots the agent using a different site than the input named', () => {
-  assert.equal(sameSite('bike4u.pl', 'ag-motors.pl'), false);
-  assert.equal(sameSite('bike4u.pl', 'shop.bike4u.pl'), true);
+  assert.equal(sameSite('cycleshop.example', 'framemaker.example'), false);
+  assert.equal(sameSite('cycleshop.example', 'shop.cycleshop.example'), true);
 });
 
 await test('builds a Windows-safe folder name from a company row', () => {
@@ -188,16 +188,16 @@ await test('builds a Windows-safe folder name from a company row', () => {
 
 await test('spots a wrong domain even when the homepage field has no url', () => {
   /* Live bug (AG MOTORS): homepage_url was "failed to capture" and the about
-     and services pages pointed at bike4u.it — an Italian bike shop, not the
+     and services pages pointed at cycleshop-it.example — an Italian bike shop, not the
      Polish company in the input. A homepage-only check had nothing to compare
      and stayed silent while two screenshots of the wrong company were filed. */
   const r = parseAgentResult(envelope({
     status_code: 'Unverified', reasoning: 'x',
     homepage_url: 'failed to capture',
-    aboutus_page_url: 'https://www.bike4u.it/chi-siamo/',
-    services_page_url: 'https://www.bike4u.it/i-nostri-servizi/',
+    aboutus_page_url: 'https://www.cycleshop-it.example/chi-siamo/',
+    services_page_url: 'https://www.cycleshop-it.example/i-nostri-servizi/',
   }));
-  const want = domainFromCompany('AG MOTORS SP. Z O.O., PL, 7219, www.bike4u.pl, PL180504689');
+  const want = domainFromCompany('EXAMPLE ROWERY SP. Z O.O., PL, 7219, www.cycleshop.example, PL000000000');
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
   const used = [r.urls.homepage, r.urls.aboutUs, ...r.urlOptions.services].map(hostOf).filter(Boolean);
   assert.ok(used.length > 0, 'there are urls to check even without a homepage');
@@ -233,10 +233,10 @@ await test('reports how many it found, so the cap can be explained', async () =>
 });
 
 await test('never treats a people or contact page as a product', () => {
-  // Live bug: the agent offered accelsiors.com/leadership/ as a services page
+  // Live bug: the agent offered cro.example/leadership/ as a services page
   // and it was captured and filed as product_2.
   for (const u of [
-    'https://accelsiors.com/leadership/',
+    'https://cro.example/leadership/',
     'https://a.com/our-team/',
     'https://a.com/management',
     'https://a.com/contact/',
@@ -244,9 +244,9 @@ await test('never treats a people or contact page as a product', () => {
 
   // …while genuine service pages from the same sites must survive.
   for (const u of [
-    'https://accelsiors.com/legal-consulting/',
-    'https://admatis.com/satellite-radiator/',
-    'https://www.aisico.com/servizi/prove-statiche-e-dinamiche/',
+    'https://cro.example/legal-consulting/',
+    'https://spacetech.example/satellite-radiator/',
+    'https://www.roadsafety.example/servizi/prove-statiche-e-dinamiche/',
     'https://a.com/about/our-services/',
   ]) assert.equal(neverAProduct(u), false, `${u} should be kept`);
 });
@@ -267,7 +267,7 @@ await test('rejects shop utility pages (compare, cart, wishlist) as products', (
 });
 
 await test('rejects booking and enquiry forms as products', () => {
-  /* Live bug (AISICO): three of the 23 "products" were booking forms living
+  /* Live bug (the road-safety site): three of the 23 "products" were booking forms living
      under /servizi/ — prenota-crash-test and two forms beneath it. They match
      every product keyword, so nothing stopped them, and the screenshots are
      of empty input boxes asking for a VAT number. */
@@ -278,7 +278,7 @@ await test('rejects booking and enquiry forms as products', () => {
     '/en/request-a-quote/', '/de/termin-buchen/',
   ]) assert.equal(neverAProduct('https://x.com' + p), true, `${p} should be rejected`);
 
-  /* The other twenty AISICO pages are real services and must survive — as must
+  /* The other twenty pages on that site are real services and must survive — as must
      a reservoir or a steam boiler, which is why the booking words are specific
      rather than "reserv" and "book". */
   for (const p of [
@@ -291,7 +291,7 @@ await test('rejects booking and enquiry forms as products', () => {
 });
 
 await test('rejects careers, privacy, legal, press and feeds in any language', async () => {
-  /* Live bug (ACTIVORIS): the reject list was English-only, and sibling
+  /* Live bug (the German medtech site): the reject list was English-only, and sibling
      matching takes a page for WHERE it sits rather than what it is called. Six
      "products" came back of which five were wrong, and product_6.jpg was a
      screenshot of raw RSS XML. */
@@ -311,9 +311,9 @@ await test('does not capture the homepage again in another language', async () =
 });
 
 await test('keeps one language when a site publishes every product twice', async () => {
-  /* Live bug (ADEXGO): /termekek/ and /en/products/ are the same page in two
+  /* Live bug (the Hungarian feed site): /termekek/ and /en/products/ are the same page in two
      languages, with identical photographs, and both were captured — two of
-     two slots for one page. AFERETICA spent two of four the same way. */
+     two slots for one page. The biomedical site spent two of four the same way. */
   const { links } = await discoverProductLinks(site.bilingualUrl, { limit: 50 });
   assert.ok(links.length > 0, 'the site does have products');
   assert.ok(!links.some((u) => u.includes('/en/')), 'the /en/ copies are translations of what we already have');
@@ -321,7 +321,7 @@ await test('keeps one language when a site publishes every product twice', async
 });
 
 await test('finds products on a site that names pages after the products', async () => {
-  /* The admatis.com shape: no path contains "product" or "service", so keyword
+  /* The spacetech.example shape: no path contains "product" or "service", so keyword
      matching finds nothing and the agent returned a different four every run.
      One confirmed product is enough to recognise its siblings. */
   const seeds = [site.namedUrl.replace(/\/$/, '') + '/3d-measurement/'];
@@ -336,6 +336,57 @@ await test('finds nothing on that site without a seed to work from', async () =>
   // Proves the previous test passes because of sibling matching, not by accident.
   const { links } = await discoverProductLinks(site.namedUrl, { limit: 20 });
   assert.equal(links.length, 0, 'keyword matching should find nothing here');
+});
+
+console.log('\ncollapsed content');
+
+/* biomed.example's About page was captured with Mission, Collaborative Research,
+   the Lab section and The team each rendered as a single line with a "+" beside
+   it, and feedadditives.example's Products page with one of its three tabs showing. The
+   text was in the DOM every time; nothing opened it before the shot. */
+const { capture: captureOne } = await import('../capture.js');
+const shotDir = path.join(__dirname, '.shots');
+await fs.mkdir(shotDir, { recursive: true });
+process.on('exit', () => { try { fsSync.rmSync(shotDir, { recursive: true, force: true }); } catch { /* gone */ } });
+
+let collapsedShot;
+await test('opens accordions and tab panels before shooting the page', async () => {
+  collapsedShot = await captureOne({
+    url: site.collapsedUrl, width: 1440, format: 'jpeg',
+    outDir: shotDir, fileName: 'collapsed.jpg', onLog: () => {},
+  });
+  /* Three things must open: the <details>, the ARIA disclosure button, and the
+     second tab panel. Anything less means one of the three patterns regressed. */
+  assert.ok(collapsedShot.expanded >= 3, `expected 3+ sections opened, got ${collapsedShot.expanded}`);
+});
+
+await test('reveals every tab panel rather than clicking through them one by one', async () => {
+  /* Clicking each tab in turn shows one panel and hides the previous, so the
+     reviewer ends up with the LAST panel instead of the first — worse than
+     doing nothing. The panels are revealed directly for that reason. */
+  assert.ok(collapsedShot.expanded >= 3);
+  assert.equal(collapsedShot.carousels, 1, 'the page has exactly one carousel');
+});
+
+await test('reports carousel slides it cannot show instead of hiding the gap', async () => {
+  /* spacetech.example's partner strip holds ESA, Airbus, Thales and about twenty
+     more, and captured two of them. Nothing in the run said why, so the
+     screenshot read as broken rather than as a slider. Sliders are not
+     unrolled — their transforms belong to their own script — but the count
+     reaches the spreadsheet. */
+  assert.equal(collapsedShot.carousels, 1);
+  assert.ok(collapsedShot.hiddenSlides >= 3, `expected 3+ off-screen slides, got ${collapsedShot.hiddenSlides}`);
+});
+
+await test('leaves navigation menus closed', async () => {
+  /* The same aria-expanded pattern drives header dropdowns. Opening those
+     drops the whole menu across the top of the capture and reveals nothing
+     anyone wanted, so navigation is excluded by design. */
+  const shot = await captureOne({
+    url: site.navOnlyUrl, width: 1440, format: 'jpeg',
+    outDir: shotDir, fileName: 'navonly.jpg', onLog: () => {},
+  });
+  assert.equal(shot.expanded, 0, 'nothing inside <nav> should have been opened');
 });
 
 console.log('\nfull batch');
@@ -443,7 +494,7 @@ await test('reuses one screenshot when two pages are the same document', () => {
 });
 
 await test('finds products even when the agent says "not available"', () => {
-  // The exact ACTIVORIS / AG MOTORS case: agent returns no services page,
+  // The exact German-medtech / dead-domain case: agent returns no services page,
   // so every one of these came from reading the site itself.
   assert.equal(result.rows[1].product_pages, 5);
 });

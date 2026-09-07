@@ -2,7 +2,7 @@
  *
  * Why this exists: the FlowHunt agent reports at most a handful of URLs in its
  * services field — in a live 8-company run it gave one URL for seven of them
- * and two for the eighth. KPMG asked for every product page, so "capture what
+ * and two for the eighth. The client asked for every product page, so "capture what
  * the agent sent" cannot satisfy the requirement no matter how carefully it is
  * implemented. The only way to find four product pages on a site with four
  * product pages is to open the site and look.
@@ -15,7 +15,7 @@
 import { chromium } from 'playwright';
 
 /* Words that mark a link as a product/service page, across the languages in
-   KPMG's list — English, German, Italian, Hungarian, Polish, Czech, Slovak,
+   the client's list — English, German, Italian, Hungarian, Polish, Czech, Slovak,
    Spanish, French, Romanian. Matched against both the href and the link text,
    because plenty of sites use /p/12 as the path and put the meaning in the
    label. */
@@ -47,7 +47,7 @@ const REJECT = new RegExp([
   'history', 'mission', 'vision', 'award', 'certificat',
   /* Booking and enquiry FORMS. These live under the services path and match
      every product keyword, so they sailed straight through: a live run filed
-     aisico.com/servizi/principale/prenota-crash-test/prove-fia/ as a product
+     roadsafety.example/servizi/principale/prenota-crash-test/prove-fia/ as a product
      when the page is a form asking for company name, address, VAT number and
      a submit button. A reviewer opening that screenshot sees empty input
      boxes, not what the company does. */
@@ -60,11 +60,11 @@ const REJECT = new RegExp([
      discovery matched product KEYWORDS: a German privacy page was never going
      to contain the word "product". Sibling matching changed the rules — it
      takes a page because of WHERE it sits, not what it is called — and a live
-     run against activoris.com returned six "products" of which five were
+     run against medtech.example returned six "products" of which five were
      /karriere/, /datenschutz/, /rechtliches/, /feed/ and the site's own
      English homepage. product_6.jpg was a screenshot of raw RSS XML.
 
-     So the same categories, in the languages KPMG's list actually contains. */
+     So the same categories, in the languages the client's list actually contains. */
   // careers
   'karriere', 'stellenangebote', 'lavora-con-noi', 'lavora-con', 'praca', 'kariera',
   'allas', 'álláss', 'empleo', 'emploi', 'locuri-de-munca', 'kariéra',
@@ -78,7 +78,7 @@ const REJECT = new RegExp([
   // certifications and accreditations — company credentials, not offerings
   'certifica', 'accredit', 'zertifiz', 'tanusit',
   /* Events and publications. The list had "news" but not "workshop", so
-     aferetica.com/4-workshop-purification-therapies-…-transplant-international-journal/
+     biomed.example/4-workshop-purification-therapies-…-transplant-international-journal/
      — a conference paper announcement — was captured as product_4. */
   'workshop', 'convegno', 'congress', 'webinar', 'seminar', 'evento', 'konferen',
   'white-paper', 'whitepaper', 'publication', 'pubblicazioni', 'brochure',
@@ -87,7 +87,7 @@ const REJECT = new RegExp([
 ].join('|'), 'i');
 
 /* A path segment that is a reference number rather than a name. EU grant
-   disclosures are the case that made this necessary — admatis.com carries
+   disclosures are the case that made this necessary — spacetech.example carries
    /ginop_plusz-1-2-4-25-2025-01916/ and /ginop_plusz-2-1-1-21-2022-00132/,
    mandatory funding notices that sibling matching filed as products. Rather
    than hardcode the Hungarian programme names (every country has its own:
@@ -97,8 +97,8 @@ const REJECT = new RegExp([
 const REFERENCE_CODE = /(?:\d+[-_]){3,}\d*/;
 
 /* A path that is nothing but a language code: /en/, /de/, /en-us/. This is the
-   homepage in another language, not a product — activoris.com/?lang=en and
-   aisico.com/en/ were both captured as products in a live run, duplicating a
+   homepage in another language, not a product — medtech.example/?lang=en and
+   roadsafety.example/en/ were both captured as products in a live run, duplicating a
    homepage screenshot we already had. */
 const LANGUAGE_ONLY_PATH = /^\/[a-z]{2}(?:[-_][a-z]{2})?\/?$/i;
 
@@ -110,9 +110,9 @@ export function languagePrefix(pathname) {
 
 /* A deliberately NARROW test for pages that cannot be a product no matter what
    any source claims. Used on the agent's own URLs, which are otherwise trusted
-   — a live run had the agent offer accelsiors.com/leadership/ as a services
+   — a live run had the agent offer cro.example/leadership/ as a services
    page, and it was captured and filed as product_2, a page of staff portraits
-   sitting in a KPMG deliverable labelled as an offering.
+   sitting in a client deliverable labelled as an offering.
 
    Kept much smaller than REJECT above on purpose. REJECT includes "about",
    which is right when ranking links scraped off a nav but would throw away a
@@ -138,7 +138,7 @@ const BOOKING_FORM = new RegExp(
 
 /* Shop plumbing that lives under a catalogue path and so inherits its product
    keywords. Live example (Distrame): /catalog/product_compare/ was filed as
-   product_3 — an empty "you have no items to compare" page in a KPMG
+   product_3 — an empty "you have no items to compare" page in a client
    deliverable. Whole segments only; "cart" as a substring would drop
    "/cartridges/", and "compare" inside a longer word is rare enough that the
    segment form is what actually occurs in practice (Magento, WooCommerce,
@@ -198,7 +198,7 @@ async function harvest(page, originHost, seen) {
      Retried once because a page that redirects or rewrites itself just after
      load destroys the execution context mid-evaluate ("Execution context was
      destroyed, most likely because of a navigation"). That happened live on
-     adexgo.hu and cost that company its product discovery entirely. Settling
+     feedadditives.example and cost that company its product discovery entirely. Settling
      first and asking again is enough — by then the navigation has landed. */
   const readAnchors = () => page.evaluate(() => {
     const out = [];
@@ -226,7 +226,7 @@ async function harvest(page, originHost, seen) {
   /* Two lists come out of this. `candidates` are links that look like product
      pages by their wording. `all` is every same-site content page, keyword or
      not — needed because plenty of sites name product pages after the product
-     itself. admatis.com is the case in point: 120 links on the homepage, not
+     itself. spacetech.example is the case in point: 120 links on the homepage, not
      one containing "product" or "service", because the pages are called
      /3d-measurement/, /conversion-coating/, /thermal-vacuum-chamber/. Keyword
      matching cannot find those, but they are recognisable another way: they sit
@@ -313,7 +313,7 @@ export async function discoverProductLinks(homepageUrl, { limit = 5, seeds = [],
     /* Plenty of sites put a single "Products" entry in the nav and list the
        actual products one level down. Screenshotting the index in that case
        yields one picture of a menu instead of four pictures of products, which
-       is precisely what KPMG asked us not to do. So when the homepage did not
+       is precisely what the client asked us not to do. So when the homepage did not
        yield enough on its own, follow the single most index-looking candidate
        and harvest its children too.
        Bounded to ONE extra page load per company: enough to turn a products
@@ -348,7 +348,7 @@ export async function discoverProductLinks(homepageUrl, { limit = 5, seeds = [],
     }
 
     /* ── Siblings of a page the agent vouched for ────────────────────────
-       The remaining blind spot, and the one that made admatis.com return a
+       The remaining blind spot, and the one that made spacetech.example return a
        different four products on every run: its pages are named after the
        products, so no keyword matches and discovery contributed nothing while
        the agent supplied whichever handful it happened to pick that time.
@@ -384,17 +384,17 @@ export async function discoverProductLinks(homepageUrl, { limit = 5, seeds = [],
 
     /* ── One language per company ──────────────────────────────────────────
        A bilingual site offers every product twice, and both copies score the
-       same, so both get captured. adexgo.hu came back with exactly two product
+       same, so both get captured. feedadditives.example came back with exactly two product
        pages — /termekek/ and /en/products/ — which are one page in Hungarian
-       and English, with identical photographs. aferetica.com spent two of its
+       and English, with identical photographs. biomed.example spent two of its
        four slots the same way. On a six-page cap that is half the budget gone
        to duplicates.
 
        Path comparison cannot see it: the slug is translated too, so
        "/termekek/" and "/en/products/" share no characters. What they do share
        is that one carries a language prefix and the other doesn't. So: keep
-       the language the HOMEPAGE is in. advantech-time.com/it/ is itself
-       prefixed, so its /it/ pages are the ones kept and /en/ dropped; adexgo.hu
+       the language the HOMEPAGE is in. testlab.example/it/ is itself
+       prefixed, so its /it/ pages are the ones kept and /en/ dropped; feedadditives.example
        has no prefix, so /termekek/ stays and /en/products/ goes.
 
        The guard matters — if a company's only product pages live under a

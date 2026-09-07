@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
 /* A ceiling on the CSV, so a mis-pasted file cannot queue a hundred thousand
-   FlowHunt calls. KPMG's largest real list is 181 rows. */
+   FlowHunt calls. The client's largest real list is 181 rows. */
 const MAX_ROWS = Number(process.env.BATCH_MAX_ROWS || 2000);
 
 /* Railway (and most container hosts) inject these. When set, the screenshots
@@ -25,13 +25,6 @@ const IS_HOSTED = Boolean(
 );
 
 const app = express();
-
-/* Liveness probe, deliberately registered before the auth middleware so a
-   container orchestrator can reach it without credentials. It answers with a
-   constant — no version, no configuration, nothing about whether FlowHunt is
-   set up — so leaving it unauthenticated gives an anonymous caller nothing
-   beyond "this process is up", which the TCP connection already told them. */
-app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
 /* ── Login ──────────────────────────────────────────────────────────────────
    Cookie-session login with a username and password, instead of HTTP Basic
@@ -43,7 +36,7 @@ app.get('/healthz', (_req, res) => res.json({ ok: true }));
    MANDATORY — the server refuses to start without them — whenever there is
    something behind it worth protecting:
      - FLOWHUNT_API_KEY is configured. The Batch tab then lets anyone who can
-       reach the page run the KPMG flow on our FlowHunt credits, and read
+       reach the page run the client's flow on our FlowHunt credits, and read
        the resulting exports.
      - the app is running on a host (Railway etc.), where "anyone who can
        reach the page" means the whole internet.

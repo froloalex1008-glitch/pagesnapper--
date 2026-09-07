@@ -4,7 +4,7 @@
 
    This is not tidiness. run.js deletes the whole batch directory when it is
    done, and before this it deleted the REAL one — so `npm test` started while
-   a live KPMG batch was capturing wiped that run's finished screenshots from
+   a live client batch was capturing wiped that run's finished screenshots from
    under it. The zip still built, but with folders missing and spreadsheet
    links pointing at files that no longer existed. */
 import os from 'node:os';
