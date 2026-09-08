@@ -46,7 +46,7 @@ docker compose up --build
 open http://localhost:3000
 ```
 
-`.env` is optional — with none, the app runs open on port 3000 exactly as `npm start` does. Everything secret comes from that file, so nothing in `docker-compose.yml` holds a credential.
+Everything secret comes from `.env`, so nothing in `docker-compose.yml` holds a credential. The file itself is optional only if the host provides `PAGESNAP_USERNAME` and `PAGESNAP_PASSWORD` another way: the compose stack is marked hosted, so without a login the server refuses to start and the container restart-loops. `docker compose logs` shows why.
 
 Two things the compose file pins deliberately, because leaving them to `.env` breaks quietly:
 
