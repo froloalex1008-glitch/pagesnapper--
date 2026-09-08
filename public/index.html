@@ -577,9 +577,7 @@ $('bhCsv').onchange = async () => {
   const parsed = parseCompanyRows(text);
   bhRows = parsed.rows;
   bhHeaders = parsed.headers;
-  $('bhCount').innerHTML = bhRows.length
-    ? `<b>${bhRows.length}</b> company row(s) loaded`
-    : 'Nothing recognised in that file — expecting one company per line (name and/or website, extra columns are fine)';
+  $('bhCount').innerHTML = bhCountMessage();
   bhJob = null;
   bhOpen.clear();
   /* Shown from the CSV alone, before anything is sent anywhere: the point of
@@ -590,6 +588,21 @@ $('bhCsv').onchange = async () => {
   updateRunEnabled();
 };
 
+/* A batch larger than the server's row cap can't run — a battle test showed
+   FlowHunt itself returning HTTP 500s under that much concurrent load, not
+   just a slow UI here. Surfaced as soon as the CSV is loaded, not only after
+   Run is clicked and rejected, so the limit is visible before anyone tries. */
+function bhCountMessage() {
+  if (!bhRows.length) {
+    return 'Nothing recognised in that file — expecting one company per line (name and/or website, extra columns are fine)';
+  }
+  const max = bhDefaults.maxRows;
+  if (max && bhRows.length > max) {
+    return `<b>${bhRows.length}</b> company row(s) loaded — <span class="err">exceeds the ${max}-row limit per batch. Split the file or trim it before running.</span>`;
+  }
+  return `<b>${bhRows.length}</b> company row(s) loaded`;
+}
+
 /* The table before the server has a job: every row pending, nothing to poll. */
 const localJobShape = () => ({
   id: null, headers: bhHeaders, running: false, stopping: false,
@@ -598,7 +611,8 @@ const localJobShape = () => ({
 });
 
 function updateRunEnabled() {
-  const ready = Boolean($('bhFlow').value && !$('bhFlow').disabled && bhRows.length);
+  const withinLimit = !bhDefaults.maxRows || bhRows.length <= bhDefaults.maxRows;
+  const ready = Boolean($('bhFlow').value && !$('bhFlow').disabled && bhRows.length && withinLimit);
   const running = Boolean(bhJob?.running);
   $('bhRunAll').disabled = !ready || running;
   $('bhRunRest').disabled = !ready || running;
@@ -609,7 +623,7 @@ function updateRunEnabled() {
 /* What the server has in its .env. When a key is configured there, the fields
    may be left blank — the server fills them in — and the flow list loads on
    its own with the configured flow preselected. */
-let bhDefaults = { hasApiKey: false, hasWorkspaceId: false, flowId: '', maxConcurrency: 10, defaultConcurrency: 3 };
+let bhDefaults = { hasApiKey: false, hasWorkspaceId: false, flowId: '', maxConcurrency: 10, defaultConcurrency: 3, maxRows: 50 };
 (async () => {
   try {
     bhDefaults = await (await fetch('/api/flowhunt/defaults')).json();
@@ -619,6 +633,10 @@ let bhDefaults = { hasApiKey: false, hasWorkspaceId: false, flowId: '', maxConcu
     if (bhDefaults.defaultConcurrency) $('bhParallel').value = bhDefaults.defaultConcurrency;
     if (bhDefaults.hasApiKey && bhDefaults.hasWorkspaceId) $('bhLoadFlows').click();
   } catch { /* no defaults — the user types everything in, as before */ }
+  /* The row-cap fallback above may not match what the server actually
+     enforces (BATCH_MAX_ROWS can be overridden) — re-check now that the real
+     value is in, in case a CSV was already loaded before this resolved. */
+  if (bhRows.length) { $('bhCount').innerHTML = bhCountMessage(); updateRunEnabled(); }
   /* A run started before this page was opened (or before it was reloaded) is
      still going on the server. Pick it up rather than showing an empty tab. */
   await refresh();

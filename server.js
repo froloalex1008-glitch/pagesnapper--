@@ -14,9 +14,12 @@ import { listFlows } from './flowhunt.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
-/* A ceiling on the CSV, so a mis-pasted file cannot queue a hundred thousand
-   FlowHunt calls. The client's largest real list is 181 rows. */
-const MAX_ROWS = Number(process.env.BATCH_MAX_ROWS || 2000);
+/* A hard ceiling on the CSV. Originally just a safety net against a
+   mis-pasted file (the client's largest real list is 181 rows); tightened to
+   50 after a battle-test run showed FlowHunt itself returning HTTP 500s under
+   the concurrent load of a larger batch — this protects FlowHunt's own
+   capacity, not just ours. Overridable via .env if that ever changes. */
+const MAX_ROWS = Number(process.env.BATCH_MAX_ROWS || 50);
 
 /* Railway (and most container hosts) inject these. When set, the screenshots
    directory is on a remote, ephemeral disk — not the visitor's machine. */

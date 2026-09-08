@@ -609,6 +609,21 @@ await test('caps product pages at six and offers no way to change it', () => {
   }
 });
 
+/* A battle test with 51 real companies showed FlowHunt itself returning
+   HTTP 500s under that much concurrent load — not a pagesnap bug, but a
+   ceiling pagesnap now enforces on FlowHunt's behalf, both server-side and
+   in the UI before anyone even clicks Run. */
+await test('caps a batch at 50 rows and surfaces it in the UI', () => {
+  const serverSrc = fsSync.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(serverSrc, /BATCH_MAX_ROWS\s*\|\|\s*50\)/, 'server.js default row cap is not 50');
+  assert.ok(/companies\.length > MAX_ROWS/.test(serverSrc), 'server.js no longer rejects an over-limit batch');
+
+  const uiSrc = fsSync.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(uiSrc, /maxRows:\s*50/, 'index.html fallback maxRows is not 50');
+  assert.ok(/exceeds the \$\{max\}-row limit/.test(uiSrc), 'index.html does not show an over-limit error message');
+  assert.ok(/withinLimit/.test(uiSrc), 'index.html no longer disables Run for an over-limit batch');
+});
+
 await test('caps parallelism at 10 however it is asked for', () => {
   assert.equal(jobs.clampConcurrency(50), 10);
   assert.equal(jobs.clampConcurrency('7'), 7);
