@@ -299,28 +299,32 @@
      reused here for the Welcome tab. Namespaced "rpt-" so nothing collides
      with the app's own .stats/.stat/.card classes used elsewhere. */
   .rpt-rule{
-    font:600 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
-    text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
-    margin:0 0 14px;display:flex;align-items:center;gap:10px;
+    font:700 16px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    text-transform:uppercase;letter-spacing:.07em;color:var(--fg);
+    margin:0 0 16px;display:flex;align-items:center;gap:12px;
   }
   .rpt-rule::after{content:"";flex:1;height:1px;background:var(--line)}
-  .rpt-lead{color:var(--muted);font-size:13.5px;margin:0 0 16px;max-width:70ch}
+  .rpt-lead{color:var(--muted);font-size:16.5px;line-height:1.5;margin:0 0 20px;max-width:70ch}
   .rpt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
   .rpt-stat{background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:16px 18px}
   .rpt-stat .num{font:700 30px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}
   .rpt-stat .label{margin-top:7px;font-size:12.5px;color:var(--muted)}
-  ul.rpt-caps{list-style:none;margin:0 0 20px;padding:0;display:grid;gap:2px}
-  ul.rpt-caps li{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;background:#0d1117;border:1px solid var(--line)}
-  ul.rpt-caps li+li{border-top:none}
-  ul.rpt-caps li:first-child{border-radius:8px 8px 0 0}
-  ul.rpt-caps li:last-child{border-radius:0 0 8px 8px}
+  ul.rpt-caps{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}
+  ul.rpt-caps li{
+    display:flex;gap:14px;align-items:flex-start;padding:16px 18px;
+    background:#212a38;border:1px solid #333f52;border-radius:10px;
+  }
   ul.rpt-caps .tick{
-    flex:none;width:17px;height:17px;margin-top:2px;border-radius:50%;
-    background:#3fb95022;color:var(--ok);font-size:11px;font-weight:700;
+    flex:none;width:24px;height:24px;margin-top:1px;border-radius:50%;
+    background:#3fb95022;color:var(--ok);font-size:14px;font-weight:700;
     display:flex;align-items:center;justify-content:center;
     font-family:ui-monospace,Menlo,monospace;
   }
-  ul.rpt-caps p{margin:0;font-size:13.5px}
+  ul.rpt-caps .tick.info{background:#4c8dff22;color:var(--accent)}
+  ul.rpt-caps .tick.warn{background:#d2992222;color:var(--warn)}
+  ul.rpt-caps .tick.bad{background:#f8514922;color:var(--err)}
+  ul.rpt-caps p{margin:0;font-size:15.5px;line-height:1.55}
+  ul.rpt-caps p b{font-weight:600;color:var(--fg)}
   .rpt-cap-banner{
     display:flex;gap:14px;align-items:center;background:#d2992220;
     border:1px solid #d2992255;border-radius:10px;padding:15px 18px;margin-bottom:18px;
@@ -340,20 +344,22 @@
   .rpt-col li{font-size:13px;padding-left:16px;position:relative;color:var(--fg)}
   .rpt-col.good li::before{content:"+";position:absolute;left:0;color:var(--ok);font-weight:700}
   .rpt-col.warn li::before{content:"–";position:absolute;left:0;color:var(--warn);font-weight:700}
-  .rpt-flow{position:relative;padding-left:34px;display:flex;flex-direction:column-reverse}
-  .rpt-flow::before{content:"";position:absolute;left:12px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--line),var(--accent))}
-  .rpt-fstep{position:relative;padding-bottom:20px}
-  .rpt-fstep:first-child{padding-bottom:0}
+  .rpt-flow{position:relative;padding-left:46px;display:flex;flex-direction:column-reverse;gap:14px}
+  .rpt-flow::before{content:"";position:absolute;left:16px;top:6px;bottom:6px;width:3px;background:linear-gradient(var(--line),var(--accent))}
+  .rpt-fstep{
+    position:relative;background:#212a38;border:1px solid #333f52;border-radius:10px;
+    padding:14px 18px;
+  }
   .rpt-fstep .dot{
-    position:absolute;left:-34px;top:0;width:26px;height:26px;border-radius:50%;
-    background:#161b22;border:1px solid var(--accent);color:var(--accent);
-    font:700 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    position:absolute;left:-46px;top:14px;width:34px;height:34px;border-radius:50%;
+    background:#161b22;border:2px solid var(--accent);color:var(--accent);
+    font:700 15px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
     display:flex;align-items:center;justify-content:center;
   }
-  .rpt-fstep b{display:block;font-size:13.5px;margin-bottom:2px}
-  .rpt-fstep span{font-size:12.5px;color:var(--muted)}
+  .rpt-fstep b{display:block;font-size:16px;margin-bottom:4px}
+  .rpt-fstep span{font-size:14px;color:var(--muted);line-height:1.5}
   .rpt-flow-short{
-    margin-top:18px;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
+    margin-top:20px;font:13.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
     background:#0d1117;border:1px solid var(--line);border-radius:8px;
     padding:12px 14px;overflow-x:auto;white-space:nowrap;
   }
@@ -605,7 +611,6 @@
             <h4>What it costs</h4>
             <ul>
               <li>A list of 100+ companies has to be split into multiple 50-company runs by hand.</li>
-              <li>50 is a cautious number from load testing, not a precisely measured ceiling.</li>
             </ul>
           </div>
         </div>
@@ -632,68 +637,41 @@
 
       <div class="infosec">
         <h2 class="rpt-rule">The two modes</h2>
-        <dl class="deflist">
-          <div class="row2"><dt>Single capture</dt><dd>One web address in, one full-page screenshot out. Nothing is researched and nothing is saved to a spreadsheet. Use it to check a page, or when you just want one image.</dd></div>
-          <div class="row2"><dt>Batch (FlowHunt)</dt><dd>A whole list of companies. The agent decides which pages matter for each one, pagesnap captures them all, and you get <b>results.xlsx</b> plus a ZIP of screenshots sorted into a folder per company.</dd></div>
-        </dl>
+        <ul class="rpt-caps">
+          <li><span class="tick info">1</span><p><b>Single capture</b> — one web address in, one full-page screenshot out. Nothing is researched and nothing is saved to a spreadsheet. Use it to check a page, or when you just want one image.</p></li>
+          <li><span class="tick info">2</span><p><b>Batch (FlowHunt)</b> — a whole list of companies. The agent decides which pages matter for each one, pagesnap captures them all, and you get <b>results.xlsx</b> plus a ZIP of screenshots sorted into a folder per company.</p></li>
+        </ul>
       </div>
 
       <div class="infosec">
         <h2 class="rpt-rule">Reading a result</h2>
-        <dl class="deflist">
-          <div class="row2">
-            <dt>The status column</dt>
-            <dd>This is the <b>agent's own verdict on its research</b> — <span class="pill ok">Verified</span><span class="pill warn">Unverified</span><span class="pill bad">Failed</span> — decided before any screenshot is taken. It is not a report on whether the pages were captured.</dd>
-          </div>
-          <div class="row2">
-            <dt>So the two can disagree</dt>
-            <dd>A row can say <b>Verified</b> and have no screenshots (the site blocked the browser), or say <b>Failed</b> and have a complete set. Always check the screenshot columns for what was actually captured.</dd>
-          </div>
-          <div class="row2">
-            <dt>Warnings</dt>
-            <dd>Say what was odd but survivable — only the homepage was found, more than six product pages existed, or the agent used a different domain than the one you gave it.</dd>
-          </div>
-          <div class="row2">
-            <dt>Errors</dt>
-            <dd>Say why a page is missing in plain words: <b>HTTP 403</b> means the site blocks automated browsers, and there is no way around it from here. Others are timeouts, invalid certificates, refused connections, and 404s.</dd>
-          </div>
-          <div class="row2">
-            <dt>failed to capture</dt>
-            <dd>In a screenshot column, means that one page could not be taken. The other columns for that company may still be fine.</dd>
-          </div>
-        </dl>
+        <ul class="rpt-caps">
+          <li><span class="tick info">i</span><p><b>The status column</b> — the <b>agent's own verdict on its research</b> — <span class="pill ok">Verified</span><span class="pill warn">Unverified</span><span class="pill bad">Failed</span> — decided before any screenshot is taken. It is not a report on whether the pages were captured.</p></li>
+          <li><span class="tick info">i</span><p><b>So the two can disagree</b> — a row can say <b>Verified</b> and have no screenshots (the site blocked the browser), or say <b>Failed</b> and have a complete set. Always check the screenshot columns for what was actually captured.</p></li>
+          <li><span class="tick warn">!</span><p><b>Warnings</b> — say what was odd but survivable: only the homepage was found, more than six product pages existed, or the agent used a different domain than the one you gave it.</p></li>
+          <li><span class="tick bad">✕</span><p><b>Errors</b> — say why a page is missing in plain words: <b>HTTP 403</b> means the site blocks automated browsers, and there is no way around it from here. Others are timeouts, invalid certificates, refused connections, and 404s.</p></li>
+          <li><span class="tick bad">✕</span><p><b>failed to capture</b> — in a screenshot column, means that one page could not be taken. The other columns for that company may still be fine.</p></li>
+        </ul>
       </div>
 
       <div class="infosec">
         <h2 class="rpt-rule">Where your run is kept</h2>
-        <dl class="deflist">
-          <div class="row2">
-            <dt>Only one at a time</dt>
-            <dd>The server keeps <b>one run</b> on disk. Loading a different list replaces it — screenshots, spreadsheet and all. This is deliberate: keeping every run filled the disk and broke captures halfway through.</dd>
-          </div>
-          <div class="row2">
-            <dt>Download before the next list</dt>
-            <dd>If a finished run has not been downloaded, pagesnap says so and <b>refuses to start a different list</b> until you either download it or confirm you do not want it. Once downloaded, the warning goes away.</dd>
-          </div>
-          <div class="row2">
-            <dt>Re-running one company</dt>
-            <dd>The <b>Run</b> button on a single row redoes just that company and replaces its folder. Everything else is left alone, so a couple of failures never mean redoing the list.</dd>
-          </div>
-          <div class="row2">
-            <dt>Run unfinished</dt>
-            <dd>Picks up the rows that never completed. <b>Run all</b> redoes every row from scratch, including the ones that worked.</dd>
-          </div>
-        </dl>
+        <ul class="rpt-caps">
+          <li><span class="tick">✓</span><p><b>Only one at a time</b> — the server keeps <b>one run</b> on disk. Loading a different list replaces it — screenshots, spreadsheet and all. This is deliberate: keeping every run filled the disk and broke captures halfway through.</p></li>
+          <li><span class="tick">✓</span><p><b>Download before the next list</b> — if a finished run has not been downloaded, pagesnap says so and <b>refuses to start a different list</b> until you either download it or confirm you do not want it. Once downloaded, the warning goes away.</p></li>
+          <li><span class="tick">✓</span><p><b>Re-running one company</b> — the <b>Run</b> button on a single row redoes just that company and replaces its folder. Everything else is left alone, so a couple of failures never mean redoing the list.</p></li>
+          <li><span class="tick">✓</span><p><b>Run unfinished</b> — picks up the rows that never completed. <b>Run all</b> redoes every row from scratch, including the ones that worked.</p></li>
+        </ul>
       </div>
 
       <div class="infosec" style="margin-bottom:0">
         <h2 class="rpt-rule">When something looks wrong</h2>
-        <dl class="deflist">
-          <div class="row2"><dt>A blank or short screenshot</dt><dd>Usually a cookie wall or a page that needs scrolling before it renders. Try the same URL in <b>Single capture</b> to see it on its own.</dd></div>
-          <div class="row2"><dt>Every page 403</dt><dd>That site refuses automated browsers. Nothing in the settings will change it — it has to be captured by hand.</dd></div>
-          <div class="row2"><dt>No homepage found</dt><dd>The agent could not resolve the company to a site. Adding the website address to that row usually fixes it.</dd></div>
-          <div class="row2"><dt>The run seems stuck</dt><dd>Lower <b>Parallel runs</b>. Each company holds its own browser, so 10 at once needs a machine with the memory for it.</dd></div>
-        </dl>
+        <ul class="rpt-caps">
+          <li><span class="tick warn">!</span><p><b>A blank or short screenshot</b> — usually a cookie wall or a page that needs scrolling before it renders. Try the same URL in <b>Single capture</b> to see it on its own.</p></li>
+          <li><span class="tick warn">!</span><p><b>Every page 403</b> — that site refuses automated browsers. Nothing in the settings will change it — it has to be captured by hand.</p></li>
+          <li><span class="tick warn">!</span><p><b>No homepage found</b> — the agent could not resolve the company to a site. Adding the website address to that row usually fixes it.</p></li>
+          <li><span class="tick warn">!</span><p><b>The run seems stuck</b> — lower <b>Parallel runs</b>. Each company holds its own browser, so 10 at once needs a machine with the memory for it.</p></li>
+        </ul>
       </div>
     </div>
   </div><!-- /infoView -->

@@ -239,10 +239,6 @@ export function buildReportHtml({ rows = [], stats = {}, generatedAt = new Date(
     </div>
     <nav class="nav" id="nav">
       <a href="#results" data-page="p-results"><span class="n">01</span>Test results</a>
-      <a href="#capabilities" data-page="p-caps"><span class="n">02</span>Capabilities</a>
-      <a href="#parameters" data-page="p-params"><span class="n">03</span>Parameters</a>
-      <a href="#batch-capacity" data-page="p-cap"><span class="n">04</span>Batch capacity</a>
-      <a href="#data-flow" data-page="p-flow"><span class="n">05</span>Data flow</a>
     </nav>
     <div class="rail-foot">
       <div class="cap">50 companies / batch</div>
@@ -297,100 +293,7 @@ export function buildReportHtml({ rows = [], stats = {}, generatedAt = new Date(
       <div class="tblwrap">
         <table class="co" id="coTable"><thead id="coHead"></thead><tbody id="coBody"></tbody></table>
       </div>
-      <footer><span>Pagesnap Report · this run's actual results</span><span>01 / 05 · ${total} companies</span></footer>
-    </section>
-
-    <section class="page" id="p-caps" hidden>
-      <div class="phead">
-        <p class="eyebrow">02 / What it does</p>
-        <h1>Capabilities</h1>
-        <p class="lead">Pagesnap takes a list of companies and returns a finished screenshot package: homepage, about-us and product pages for every company, plus a business summary from the FlowHunt agent.</p>
-      </div>
-      <ul class="caps">
-        <li><span class="tick">✓</span><p><b>Full-page screenshots</b> from a plain URL — clean, even on pages a normal tool would return broken or blank.</p></li>
-        <li><span class="tick">✓</span><p><b>Waits for the page to actually finish</b> — fonts, lazy-loaded images, animations settled, cookie banner dismissed — before it shoots.</p></li>
-        <li><span class="tick">✓</span><p><b>Slices and stitches long pages</b> instead of one giant shot — Chromium silently returns blank bands past ~16,000px in a single capture; this never does.</p></li>
-        <li><span class="tick">✓</span><p><b>Runs as a batch</b> — upload a CSV or Excel file of companies, and for each one it finds the homepage, About Us, and product pages on its own.</p></li>
-        <li><span class="tick">✓</span><p><b>Lives on the server, not the tab</b> — close it, reload, come back an hour later, the run is exactly where it left off.</p></li>
-        <li><span class="tick">✓</span><p><b>Re-runs selectively</b> — the whole list, just the unfinished rows, or one company on its own.</p></li>
-        <li><span class="tick">✓</span><p><b>Ships a finished package</b> — <code>results.xlsx</code>, this report, and a zip of every screenshot, all in one download.</p></li>
-        <li><span class="tick">✓</span><p><b>Reports problems honestly</b> — a blocked site or a timeout shows up as a clear warning, never a silent gap or a faked success.</p></li>
-        <li><span class="tick">✓</span><p><b>Detects the site's own language</b> — a Hungarian company no longer comes back as a mix of English and Hungarian pages.</p></li>
-      </ul>
-      <footer><span>Pagesnap Report</span><span>02 / 05 · Capabilities</span></footer>
-    </section>
-
-    <section class="page" id="p-params" hidden>
-      <div class="phead">
-        <p class="eyebrow">03 / Numbers to know</p>
-        <h1>Parameters</h1>
-        <p class="lead">The settings that shape every export. Both are configurable — these are the values this run used.</p>
-      </div>
-      <div class="stats" style="margin-bottom:28px">
-        <div class="stat"><div class="num">6</div><div class="label">product pages captured per company, fixed — every export is shaped the same way</div></div>
-        <div class="stat"><div class="num">1–10</div><div class="label">companies processed in parallel per run, adjustable per batch</div></div>
-      </div>
-      <h3 class="rule">What each company produces</h3>
-      <ul class="caps">
-        <li><span class="tick">1</span><p><b>Homepage</b> — the anchor shot; a company counts as captured only when real content came back.</p></li>
-        <li><span class="tick">1</span><p><b>About Us</b> — found by the agent, not guessed from a URL pattern.</p></li>
-        <li><span class="tick">1</span><p><b>Services</b> — captured where the site has one.</p></li>
-        <li><span class="tick">6</span><p><b>Product pages</b> — up to six, so every row in the export lines up.</p></li>
-      </ul>
-      <footer><span>Pagesnap Report</span><span>03 / 05 · Parameters</span></footer>
-    </section>
-
-    <section class="page" id="p-cap" hidden>
-      <div class="phead">
-        <p class="eyebrow">04 / Scope</p>
-        <h1>Batch capacity</h1>
-        <p class="lead">How many companies one run takes today, and what that ceiling is actually for.</p>
-      </div>
-      <div class="cap-banner">
-        <div class="num">50</div>
-        <p>companies per run, right now. <span>Not the final shape of the tool — a deliberate, temporary ceiling.</span></p>
-      </div>
-      <div class="grid2" style="margin-bottom:28px">
-        <div class="col good">
-          <h3>Why it's there</h3>
-          <ul>
-            <li>Set as a safety margin from early load testing — a full run at 50 companies goes through cleanly every time.</li>
-            <li>Enforced twice — a clear message the moment the list loads in the UI, and a second check on the server that can't be bypassed.</li>
-            <li>Not hardcoded forever — easy to raise through configuration once a higher volume is verified safe.</li>
-          </ul>
-        </div>
-        <div class="col warn">
-          <h3>What it costs</h3>
-          <ul>
-            <li>A list of 100+ companies has to be split into multiple 50-company runs by hand — no auto-chunking yet.</li>
-            <li>50 is a cautious number from load testing, not a precisely measured ceiling — the real limit may be higher.</li>
-          </ul>
-        </div>
-      </div>
-      <h3 class="rule">Accepted input</h3>
-      <ul class="caps">
-        <li><span class="tick">✓</span><p><b>CSV</b> — one company per line, name and/or website.</p></li>
-        <li><span class="tick">✓</span><p><b>Excel (.xlsx)</b> — converted to CSV automatically on upload; the first sheet is read, hyperlinked cells included.</p></li>
-        <li><span class="tick">✓</span><p><b>Extra columns are welcome</b> — country, VAT, internal ID. The whole row goes to the agent to help it pick the right company.</p></li>
-      </ul>
-      <footer><span>Pagesnap Report</span><span>04 / 05 · Batch capacity</span></footer>
-    </section>
-
-    <section class="page" id="p-flow" hidden>
-      <div class="phead">
-        <p class="eyebrow">05 / Architecture</p>
-        <h1>Data flow</h1>
-        <p class="lead">Read bottom to top: the company list goes in at the bottom, screenshots and the export come out at the top. Two systems are involved: pagesnap does the capturing, the FlowHunt agent does the research.</p>
-      </div>
-      <div class="flow">
-        <div class="fstep"><span class="dot">1</span><b>The company list goes into pagesnap</b><span>CSV parsed in the browser, Excel converted on the server first. Nothing sent onward yet.</span></div>
-        <div class="fstep"><span class="dot">2</span><b>Pagesnap calls the FlowHunt agent</b><span>Per company: finds the homepage, About Us, and product pages; writes a business summary.</span></div>
-        <div class="fstep"><span class="dot">3</span><b>The agent's answer comes back</b><span>A list of exact URLs to capture for that company, plus its own status verdict.</span></div>
-        <div class="fstep"><span class="dot">4</span><b>Pagesnap takes the screenshots</b><span>Its own Playwright browser — homepage, about-us, services, up to 6 product pages.</span></div>
-        <div class="fstep"><span class="dot">5</span><b>The result is assembled</b><span>A live status table, then <code>results.xlsx</code> + this report + a zip, ready to download.</span></div>
-      </div>
-      <div class="flow-short">export <span>←</span> screenshots <span>←</span> pagesnap <span>←</span> FlowHunt agent <span>←</span> pagesnap <span>←</span> list</div>
-      <footer><span>Pagesnap Report</span><span>05 / 05 · Data flow</span></footer>
+      <footer><span>Pagesnap Report · this run's actual results</span><span>${total} companies</span></footer>
     </section>
   </main>
 </div>
