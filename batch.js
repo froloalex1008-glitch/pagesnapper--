@@ -22,6 +22,7 @@ import ExcelJS from 'exceljs';
 import { capture } from './capture.js';
 import { runFlow, parseAgentResult } from './flowhunt.js';
 import { discoverProductLinks, neverAProduct } from './discover.js';
+import { buildReportHtml } from './report.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const BATCH_DIR = process.env.BATCH_DIR || path.join(__dirname, 'batches');
@@ -732,6 +733,39 @@ export async function buildExport({ rows, workDir = WORK_DIR, onLog = () => {} }
   const xlsxName = 'results.xlsx';
   await wb.xlsx.writeFile(path.join(workDir, xlsxName));
 
+  /* Count image FILES, not filled-in columns. Where the agent gave the same URL
+     for two pages both columns point at one screenshot, so counting columns
+     would promise more files than the zip contains. Pages documented is the
+     more useful second number, so report both. Computed here (rather than
+     after zipping, where this used to live) so the report below can quote
+     the same totals as everything else. */
+  const files = new Set();
+  let pagesDocumented = 0;
+  let productShots = 0;
+  for (const r of rows) {
+    for (const col of SHOT_COLUMNS) {
+      const cell = r[col];
+      if (!cell || cell === 'failed to capture') continue;
+      // The product column holds several paths; the other two hold one each.
+      for (const v of String(cell).split(LINK_SEP).filter(Boolean)) {
+        pagesDocumented++;
+        files.add(v);
+        if (col === 'services_screenshot_link') productShots++;
+      }
+    }
+  }
+
+  /* The client-facing report ships inside the same zip as results.xlsx, built
+     from these exact rows — so it can never describe a different run than the
+     one someone is holding. See report.js for what it covers and why the
+     cost figures on it are marked illustrative rather than computed. */
+  onLog('building report.html…');
+  const reportName = 'report.html';
+  await fs.writeFile(
+    path.join(workDir, reportName),
+    buildReportHtml({ rows, stats: { totalCompanies: rows.length, totalShots: files.size, pagesDocumented, productShots } }),
+  );
+
   onLog('zipping results…');
   /* One fixed name, overwritten on every export. A timestamped name grew the
      batches directory by the full size of the run every single time it was
@@ -759,25 +793,6 @@ export async function buildExport({ rows, workDir = WORK_DIR, onLog = () => {} }
   const { size } = await fs.stat(zipPath);
   onLog(`done — ${zipName} (${(size / 1024 / 1024).toFixed(2)} MB)`);
 
-  /* Count image FILES, not filled-in columns. Where the agent gave the same URL
-     for two pages both columns point at one screenshot, so counting columns
-     would promise more files than the zip contains. Pages documented is the
-     more useful second number, so report both. */
-  const files = new Set();
-  let pagesDocumented = 0;
-  let productShots = 0;
-  for (const r of rows) {
-    for (const col of SHOT_COLUMNS) {
-      const cell = r[col];
-      if (!cell || cell === 'failed to capture') continue;
-      // The product column holds several paths; the other two hold one each.
-      for (const v of String(cell).split(LINK_SEP).filter(Boolean)) {
-        pagesDocumented++;
-        files.add(v);
-        if (col === 'services_screenshot_link') productShots++;
-      }
-    }
-  }
   /* From here the ZIP exists but nobody has it yet. Recorded so that starting
      a different list can stop and say what is about to be thrown away. */
   await markExported(

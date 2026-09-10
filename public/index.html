@@ -93,6 +93,19 @@
   .tab:hover{color:var(--fg)}
   .tab.active{color:var(--fg);border-bottom-color:var(--accent)}
 
+  /* ── Brand mark ────────────────────────────────────────────────────────────
+     Same geometric mark used on the client-facing Pagesnap Report, so the app
+     and the report read as one product. */
+  .brandrow{display:flex;gap:12px;align-items:flex-start;margin-bottom:4px}
+  .mark{flex:none;width:24px;height:24px;margin-top:5px;position:relative}
+  .mark i{position:absolute;width:8px;height:8px;border:2px solid var(--accent)}
+  .mark i:nth-child(1){top:0;left:0;border-right:none;border-bottom:none}
+  .mark i:nth-child(2){top:0;right:0;border-left:none;border-bottom:none}
+  .mark i:nth-child(3){bottom:0;left:0;border-right:none;border-top:none}
+  .mark i:nth-child(4){bottom:0;right:0;border-left:none;border-top:none}
+  .mark b{position:absolute;inset:8px;background:var(--accent);border-radius:50%;opacity:.85}
+  .brandrow h1{margin:0}
+
   /* ── "What is this?" panel ────────────────────────────────────────────────
      Each tab opens on an explanation of what that mode is for. Someone
      landing here for the first time should not have to press Capture to
@@ -280,21 +293,90 @@
   .num-in{width:76px}
   input[type=number]{background:#0d1117;border:1px solid var(--line);color:var(--fg);
     padding:9px 10px;border-radius:8px;font-size:14px}
+
+  /* ── Report-style components ──────────────────────────────────────────────
+     Same visual language as the client-facing Pagesnap Report artifact,
+     reused here for the Welcome tab. Namespaced "rpt-" so nothing collides
+     with the app's own .stats/.stat/.card classes used elsewhere. */
+  .rpt-rule{
+    font:600 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:0 0 14px;display:flex;align-items:center;gap:10px;
+  }
+  .rpt-rule::after{content:"";flex:1;height:1px;background:var(--line)}
+  .rpt-lead{color:var(--muted);font-size:13.5px;margin:0 0 16px;max-width:70ch}
+  .rpt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .rpt-stat{background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .rpt-stat .num{font:700 30px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}
+  .rpt-stat .label{margin-top:7px;font-size:12.5px;color:var(--muted)}
+  ul.rpt-caps{list-style:none;margin:0 0 20px;padding:0;display:grid;gap:2px}
+  ul.rpt-caps li{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;background:#0d1117;border:1px solid var(--line)}
+  ul.rpt-caps li+li{border-top:none}
+  ul.rpt-caps li:first-child{border-radius:8px 8px 0 0}
+  ul.rpt-caps li:last-child{border-radius:0 0 8px 8px}
+  ul.rpt-caps .tick{
+    flex:none;width:17px;height:17px;margin-top:2px;border-radius:50%;
+    background:#3fb95022;color:var(--ok);font-size:11px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    font-family:ui-monospace,Menlo,monospace;
+  }
+  ul.rpt-caps p{margin:0;font-size:13.5px}
+  .rpt-cap-banner{
+    display:flex;gap:14px;align-items:center;background:#d2992220;
+    border:1px solid #d2992255;border-radius:10px;padding:15px 18px;margin-bottom:18px;
+  }
+  .rpt-cap-banner .num{font:700 28px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--warn)}
+  .rpt-cap-banner p{margin:0;font-size:13.5px}
+  .rpt-cap-banner p span{color:var(--muted)}
+  .rpt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+  .rpt-col{background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:15px 17px}
+  .rpt-col h4{
+    font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;
+    letter-spacing:.08em;margin:0 0 12px;
+  }
+  .rpt-col.good h4{color:var(--ok)}
+  .rpt-col.warn h4{color:var(--warn)}
+  .rpt-col ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+  .rpt-col li{font-size:13px;padding-left:16px;position:relative;color:var(--fg)}
+  .rpt-col.good li::before{content:"+";position:absolute;left:0;color:var(--ok);font-weight:700}
+  .rpt-col.warn li::before{content:"–";position:absolute;left:0;color:var(--warn);font-weight:700}
+  .rpt-flow{position:relative;padding-left:34px;display:flex;flex-direction:column-reverse}
+  .rpt-flow::before{content:"";position:absolute;left:12px;top:6px;bottom:6px;width:2px;background:linear-gradient(var(--line),var(--accent))}
+  .rpt-fstep{position:relative;padding-bottom:20px}
+  .rpt-fstep:first-child{padding-bottom:0}
+  .rpt-fstep .dot{
+    position:absolute;left:-34px;top:0;width:26px;height:26px;border-radius:50%;
+    background:#161b22;border:1px solid var(--accent);color:var(--accent);
+    font:700 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .rpt-fstep b{display:block;font-size:13.5px;margin-bottom:2px}
+  .rpt-fstep span{font-size:12.5px;color:var(--muted)}
+  .rpt-flow-short{
+    margin-top:18px;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
+    background:#0d1117;border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;overflow-x:auto;white-space:nowrap;
+  }
+  .rpt-flow-short span{color:var(--muted)}
+  @media (max-width:640px){.rpt-grid2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <form method="POST" action="/logout" class="signout"><button type="submit">Sign out</button></form>
-  <h1>page<span>snap</span></h1>
+  <div class="brandrow">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
+    <h1>page<span>snap</span></h1>
+  </div>
   <p class="sub">Full-page screenshots of JavaScript-rendered sites. Waits for hydration, forces lazy images, freezes animation, then captures.</p>
 
   <div class="tabs">
-    <button class="tab active" type="button" data-view="single">Single capture</button>
+    <button class="tab active" type="button" data-view="info">Welcome</button>
+    <button class="tab" type="button" data-view="single">Single capture</button>
     <button class="tab" type="button" data-view="batch">Batch (FlowHunt)</button>
-    <button class="tab" type="button" data-view="info">Info</button>
   </div>
 
-  <div id="singleView">
+  <div id="singleView" class="hidden">
   <div class="explain">
     <div class="ico" aria-hidden="true">1</div>
     <div class="body">
@@ -466,6 +548,7 @@
         <div class="btnrow">
           <button id="bhExport" type="button" class="openbtn">Build ZIP</button>
           <a id="bhDl" class="dlbtn openbtn hidden" style="text-decoration:none" href="#" download>⬇ Download ZIP</a>
+          <a id="bhReport" class="openbtn hidden" style="text-decoration:none" href="/report" target="_blank" rel="noopener">↗ View report</a>
         </div>
       </div>
       <p class="filecount" id="bhExportNote" style="margin-top:12px">
@@ -476,28 +559,79 @@
     </div>
   </div><!-- /batchView -->
 
-  <div id="infoView" class="hidden">
+  <div id="infoView">
     <div class="explain">
       <div class="ico" aria-hidden="true">?</div>
       <div class="body">
-        <h3>How pagesnap works</h3>
+        <h3>Welcome — how pagesnap works</h3>
         <p>The numbers, the limits, and how to read what comes back. Nothing here changes anything — it is just the reference for when you have not used it in a while.</p>
       </div>
     </div>
 
     <div class="card">
       <div class="infosec">
-        <h2>The numbers</h2>
-        <div class="numgrid">
-          <div><b>50</b><span>companies per batch run, right now</span></div>
-          <div><b>6</b><span>product pages captured per company, fixed</span></div>
-          <div><b>9</b><span>pages per company at most — home, about, services, 6 products</span></div>
-          <div><b>1–10</b><span>companies captured at the same time (parallel runs)</span></div>
+        <h2 class="rpt-rule">Parameters</h2>
+        <p class="rpt-lead">The settings that shape every export. Both are configurable — these are today's values.</p>
+        <div class="rpt-stats">
+          <div class="rpt-stat"><div class="num">6</div><div class="label">product pages captured per company, fixed</div></div>
+          <div class="rpt-stat"><div class="num">9</div><div class="label">pages per company at most — home, about, services, 6 products</div></div>
+          <div class="rpt-stat"><div class="num">1–10</div><div class="label">companies processed in parallel per run</div></div>
         </div>
+        <ul class="rpt-caps">
+          <li><span class="tick">1</span><p><b>Homepage</b> — the anchor shot; a company counts as captured only when real content came back.</p></li>
+          <li><span class="tick">1</span><p><b>About Us</b> — found by the agent, not guessed from a URL pattern.</p></li>
+          <li><span class="tick">1</span><p><b>Services</b> — captured where the site has one.</p></li>
+          <li><span class="tick">6</span><p><b>Product pages</b> — up to six, so every row in the export lines up.</p></li>
+        </ul>
       </div>
 
       <div class="infosec">
-        <h2>The two modes</h2>
+        <h2 class="rpt-rule">Batch capacity</h2>
+        <p class="rpt-lead">How many companies one run takes today, and what that ceiling is actually for.</p>
+        <div class="rpt-cap-banner">
+          <div class="num">50</div>
+          <p>companies per run, right now. <span>A deliberate, temporary ceiling — not the final shape of the tool.</span></p>
+        </div>
+        <div class="rpt-grid2">
+          <div class="rpt-col good">
+            <h4>Why it's there</h4>
+            <ul>
+              <li>A safety margin from early load testing — a full run at 50 companies goes through cleanly every time.</li>
+              <li>Enforced twice — a message the moment the list loads, and a server check that can't be bypassed.</li>
+              <li>Easy to raise through configuration once a higher volume is verified safe.</li>
+            </ul>
+          </div>
+          <div class="rpt-col warn">
+            <h4>What it costs</h4>
+            <ul>
+              <li>A list of 100+ companies has to be split into multiple 50-company runs by hand.</li>
+              <li>50 is a cautious number from load testing, not a precisely measured ceiling.</li>
+            </ul>
+          </div>
+        </div>
+        <ul class="rpt-caps">
+          <li><span class="tick">✓</span><p><b>CSV</b> — one company per line, a name, a website, or both.</p></li>
+          <li><span class="tick">✓</span><p><b>Excel (.xlsx)</b> — converted automatically on upload. First sheet only, up to about 11 MB; old <code>.xls</code> needs re-saving first.</p></li>
+          <li><span class="tick">✓</span><p><b>Extra columns</b> — country, VAT, internal ID. The whole row goes to the agent to help it pick the right company.</p></li>
+          <li><span class="tick">!</span><p><b>Over 50 rows</b> — the list still loads and you can see it, but it will not run. Split into chunks of 50 or fewer.</p></li>
+        </ul>
+      </div>
+
+      <div class="infosec">
+        <h2 class="rpt-rule">Data flow</h2>
+        <p class="rpt-lead">Read bottom to top: the company list goes in at the bottom, the finished export comes out at the top. Two systems are involved — pagesnap does the capturing, the FlowHunt agent does the research.</p>
+        <div class="rpt-flow">
+          <div class="rpt-fstep"><span class="dot">1</span><b>The company list goes into pagesnap</b><span>CSV parsed in the browser, Excel converted on the server first. Nothing sent onward yet.</span></div>
+          <div class="rpt-fstep"><span class="dot">2</span><b>Pagesnap calls the FlowHunt agent</b><span>Per company: finds the homepage, About Us, and product pages; writes a business summary.</span></div>
+          <div class="rpt-fstep"><span class="dot">3</span><b>The agent's answer comes back</b><span>A list of exact URLs to capture for that company, plus its own status verdict.</span></div>
+          <div class="rpt-fstep"><span class="dot">4</span><b>Pagesnap takes the screenshots</b><span>Its own Playwright browser — homepage, about-us, services, up to 6 product pages.</span></div>
+          <div class="rpt-fstep"><span class="dot">5</span><b>The result is assembled</b><span>A live status table, then <code>results.xlsx</code> + a report + a zip, ready to download.</span></div>
+        </div>
+        <div class="rpt-flow-short">export <span>←</span> screenshots <span>←</span> pagesnap <span>←</span> FlowHunt agent <span>←</span> pagesnap <span>←</span> list</div>
+      </div>
+
+      <div class="infosec">
+        <h2 class="rpt-rule">The two modes</h2>
         <dl class="deflist">
           <div class="row2"><dt>Single capture</dt><dd>One web address in, one full-page screenshot out. Nothing is researched and nothing is saved to a spreadsheet. Use it to check a page, or when you just want one image.</dd></div>
           <div class="row2"><dt>Batch (FlowHunt)</dt><dd>A whole list of companies. The agent decides which pages matter for each one, pagesnap captures them all, and you get <b>results.xlsx</b> plus a ZIP of screenshots sorted into a folder per company.</dd></div>
@@ -505,28 +639,7 @@
       </div>
 
       <div class="infosec">
-        <h2>What you can upload</h2>
-        <dl class="deflist">
-          <div class="row2"><dt>CSV</dt><dd>One company per line — a name, a website, or both.</dd></div>
-          <div class="row2"><dt>Excel (.xlsx)</dt><dd>Converted automatically when you pick it. The <b>first sheet only</b>, up to about 11 MB. Old <b>.xls</b> files need re-saving as .xlsx first.</dd></div>
-          <div class="row2"><dt>Extra columns</dt><dd>Country, VAT number, internal ID — all welcome. The whole row is sent to the agent, which helps it pick the right company when the name is ambiguous.</dd></div>
-          <div class="row2"><dt>Over 50 rows</dt><dd>The list still loads and you can see it, but it will not run. Split the file into chunks of 50 or fewer.</dd></div>
-        </dl>
-      </div>
-
-      <div class="infosec">
-        <h2>What happens when you press Run</h2>
-        <ol class="steps">
-          <li>Your list is sent to the server, one row per company.</li>
-          <li>For each company the <b>FlowHunt agent</b> finds the homepage, About Us and product pages, and writes a short description of the business.</li>
-          <li><b>Pagesnap</b> opens each of those pages in its own browser and captures them full length — waiting for the page to settle, closing the cookie banner, forcing lazy images to load.</li>
-          <li>The table updates row by row as companies finish. The run lives on the server, so you can close the tab and come back.</li>
-          <li>Press <b>Build ZIP</b> to package it, then download.</li>
-        </ol>
-      </div>
-
-      <div class="infosec">
-        <h2>Reading a result</h2>
+        <h2 class="rpt-rule">Reading a result</h2>
         <dl class="deflist">
           <div class="row2">
             <dt>The status column</dt>
@@ -552,7 +665,7 @@
       </div>
 
       <div class="infosec">
-        <h2>Where your run is kept</h2>
+        <h2 class="rpt-rule">Where your run is kept</h2>
         <dl class="deflist">
           <div class="row2">
             <dt>Only one at a time</dt>
@@ -574,7 +687,7 @@
       </div>
 
       <div class="infosec" style="margin-bottom:0">
-        <h2>When something looks wrong</h2>
+        <h2 class="rpt-rule">When something looks wrong</h2>
         <dl class="deflist">
           <div class="row2"><dt>A blank or short screenshot</dt><dd>Usually a cookie wall or a page that needs scrolling before it renders. Try the same URL in <b>Single capture</b> to see it on its own.</dd></div>
           <div class="row2"><dt>Every page 403</dt><dd>That site refuses automated browsers. Nothing in the settings will change it — it has to be captured by hand.</dd></div>
@@ -1271,6 +1384,11 @@ $('bhExport').onclick = async () => {
     $('bhDl').href = `/batches/${r.zipFile}?t=${Date.now()}`;
     $('bhDl').textContent = `⬇ Download ${r.zipFile}`;
     $('bhDl').classList.remove('hidden');
+    /* report.html ships inside the zip too, but this opens it straight in a
+       tab — handy to check the report or hand someone a link before the
+       zip itself goes anywhere. Same cache-busting reasoning as the zip. */
+    $('bhReport').href = `/report?t=${Date.now()}`;
+    $('bhReport').classList.remove('hidden');
     /* It exists now and nobody has it — start reminding. */
     refreshKeep();
   } catch (err) {

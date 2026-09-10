@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { capture, SHOTS_DIR } from './capture.js';
 import {
-  BATCH_DIR, ZIP_NAME, pruneBatchDir, xlsxBufferToCsv,
+  BATCH_DIR, WORK_DIR, ZIP_NAME, pruneBatchDir, xlsxBufferToCsv,
   uncollectedRun, markDownloaded,
 } from './batch.js';
 import {
@@ -196,6 +196,20 @@ app.get(`/batches/${ZIP_NAME}`, (_req, _res, next) => {
   next();
 });
 app.use('/batches', express.static(BATCH_DIR));
+
+/* A short, memorable link to the current run's report — it already lives at
+   /batches/work/report.html via the static mount above, but that path is an
+   implementation detail (workDir happens to be called "work") that shouldn't
+   leak into anything anyone bookmarks or shares. Same file, nicer address. */
+app.get('/report', async (req, res) => {
+  const reportPath = path.join(WORK_DIR, 'report.html');
+  try {
+    await fs.access(reportPath);
+  } catch {
+    return res.status(404).send('No report yet — export a batch first, then this link will show it.');
+  }
+  res.sendFile(reportPath);
+});
 
 /* Streams progress to the browser as newline-delimited JSON, so the UI can show
    each stabilisation step as it happens instead of hanging on a long POST. */

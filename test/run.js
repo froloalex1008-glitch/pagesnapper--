@@ -474,7 +474,8 @@ const asSpecifier = (p) => JSON.stringify(pathToFileURL(p).href);
 const batchSrc = (await fs.readFile(path.join(__dirname, '..', 'batch.js'), 'utf8'))
   .replace("from './flowhunt.js'", `from ${asSpecifier(stubPath)}`)
   .replace("from './capture.js'", `from ${asSpecifier(path.join(__dirname, '..', 'capture.js'))}`)
-  .replace("from './discover.js'", `from ${asSpecifier(path.join(__dirname, '..', 'discover.js'))}`);
+  .replace("from './discover.js'", `from ${asSpecifier(path.join(__dirname, '..', 'discover.js'))}`)
+  .replace("from './report.js'", `from ${asSpecifier(path.join(__dirname, '..', 'report.js'))}`);
 const batchStub = path.join(__dirname, '.batch.stub.mjs');
 await fs.writeFile(batchStub, batchSrc, 'utf8');
 const { runBatch } = await import(pathToFileURL(batchStub).href);
