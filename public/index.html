@@ -132,6 +132,97 @@
     .explain{flex-direction:column;gap:10px}
   }
 
+  /* ── "Your last run is still here" panel ──────────────────────────────────
+     Only one run's files fit on disk, so starting a different list destroys
+     the previous one. This is the guard rail: quiet reminder while a finished
+     run sits undownloaded, and a hard stop the moment something would wipe it. */
+  .keep{
+    display:flex;gap:14px;align-items:flex-start;
+    background:#d2992212;
+    border:1px solid #d2992255;
+    border-left:3px solid var(--warn);
+    border-radius:10px;
+    padding:16px 18px;
+    margin-bottom:20px;
+  }
+  .keep.danger{background:#f8514912;border-color:#f8514966;border-left-color:var(--err)}
+  .keep .kico{
+    flex:none;width:26px;height:26px;border-radius:7px;
+    background:#d2992222;color:var(--warn);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:700;margin-top:1px;
+  }
+  .keep.danger .kico{background:#f8514922;color:var(--err)}
+  .keep .kbody{min-width:0;flex:1}
+  .keep h3{margin:0 0 5px;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+  .keep p{margin:0 0 12px;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .keep p b{color:var(--fg);font-weight:600}
+  .kacts{display:flex;gap:8px;flex-wrap:wrap}
+  .kbtn{
+    font-size:13.5px;font-weight:600;padding:9px 15px;border-radius:8px;
+    border:1px solid var(--line);background:transparent;color:var(--fg);
+    cursor:pointer;text-decoration:none;display:inline-block;
+  }
+  .kbtn.go{background:var(--accent);border-color:var(--accent);color:#fff}
+  .kbtn.wipe{border-color:#f8514966;color:var(--err)}
+  .kbtn.wipe:hover{background:#f8514918}
+  .kbtn.ghost{color:var(--muted)}
+  .kbtn.ghost:hover{color:var(--fg)}
+
+  /* ── Info tab ─────────────────────────────────────────────────────────────
+     The reference nobody reads until they need it: the fixed numbers, what a
+     run produces, and how to read a result. */
+  .infosec{margin-bottom:26px}
+  .infosec > h2{
+    font-size:12px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--muted);margin:0 0 13px;font-weight:600;
+    display:flex;align-items:center;gap:10px;
+  }
+  .infosec > h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .numgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .numgrid div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .numgrid b{
+    display:block;font-size:27px;font-weight:700;color:var(--accent);
+    line-height:1;font-variant-numeric:tabular-nums;
+  }
+  .numgrid span{display:block;margin-top:7px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .deflist{display:grid;gap:2px}
+  .deflist .row2{
+    display:grid;grid-template-columns:190px 1fr;gap:16px;
+    background:var(--panel);border:1px solid var(--line);
+    padding:12px 16px;align-items:baseline;
+  }
+  .deflist .row2 + .row2{border-top:none}
+  .deflist .row2:first-child{border-radius:9px 9px 0 0}
+  .deflist .row2:last-child{border-radius:0 0 9px 9px}
+  .deflist dt{font-size:13.5px;font-weight:600;color:var(--fg);margin:0}
+  .deflist dd{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .deflist dd b{color:var(--fg);font-weight:600}
+  .steps{counter-reset:s;display:grid;gap:9px;margin:0;padding:0;list-style:none}
+  .steps li{
+    counter-increment:s;position:relative;padding-left:34px;
+    font-size:13.5px;color:var(--muted);line-height:1.55;
+  }
+  .steps li::before{
+    content:counter(s);position:absolute;left:0;top:-1px;
+    width:23px;height:23px;border-radius:50%;
+    background:#4c8dff1f;color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;
+  }
+  .steps li b{color:var(--fg);font-weight:600}
+  .pill{
+    display:inline-block;font-size:11.5px;font-weight:600;
+    padding:2px 9px;border-radius:20px;margin-right:2px;
+  }
+  .pill.ok{background:#3fb95022;color:var(--ok)}
+  .pill.warn{background:#d2992222;color:var(--warn)}
+  .pill.bad{background:#f8514922;color:var(--err)}
+  @media (max-width:720px){
+    .numgrid{grid-template-columns:repeat(2,1fr)}
+    .deflist .row2{grid-template-columns:1fr;gap:4px}
+  }
+
   input[type=password],input[type=text]{width:100%;background:#0d1117;border:1px solid var(--line);
     color:var(--fg);padding:11px 14px;border-radius:8px;font-size:15px}
   input[type=password]:focus,input[type=text]:focus{outline:none;border-color:var(--accent)}
@@ -200,6 +291,7 @@
   <div class="tabs">
     <button class="tab active" type="button" data-view="single">Single capture</button>
     <button class="tab" type="button" data-view="batch">Batch (FlowHunt)</button>
+    <button class="tab" type="button" data-view="info">Info</button>
   </div>
 
   <div id="singleView">
@@ -338,6 +430,19 @@
       </p>
     </div>
 
+    <div class="keep hidden" id="bhKeep">
+      <div class="kico" aria-hidden="true">!</div>
+      <div class="kbody">
+        <h3 id="bhKeepTitle">Your last run is still waiting to be downloaded</h3>
+        <p id="bhKeepBody"></p>
+        <div class="kacts">
+          <a id="bhKeepDl" class="kbtn go" href="/batches/batch.zip" download>⬇ Download it now</a>
+          <button id="bhKeepWipe" type="button" class="kbtn wipe hidden">Delete it and run the new list</button>
+          <button id="bhKeepCancel" type="button" class="kbtn ghost hidden">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div class="card hidden" id="bhTableCard">
       <div class="toolbar">
         <button id="bhRunAll" type="button">Run all</button>
@@ -370,6 +475,115 @@
       </p>
     </div>
   </div><!-- /batchView -->
+
+  <div id="infoView" class="hidden">
+    <div class="explain">
+      <div class="ico" aria-hidden="true">?</div>
+      <div class="body">
+        <h3>How pagesnap works</h3>
+        <p>The numbers, the limits, and how to read what comes back. Nothing here changes anything — it is just the reference for when you have not used it in a while.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="infosec">
+        <h2>The numbers</h2>
+        <div class="numgrid">
+          <div><b>50</b><span>companies per batch run, right now</span></div>
+          <div><b>6</b><span>product pages captured per company, fixed</span></div>
+          <div><b>9</b><span>pages per company at most — home, about, services, 6 products</span></div>
+          <div><b>1–10</b><span>companies captured at the same time (parallel runs)</span></div>
+        </div>
+      </div>
+
+      <div class="infosec">
+        <h2>The two modes</h2>
+        <dl class="deflist">
+          <div class="row2"><dt>Single capture</dt><dd>One web address in, one full-page screenshot out. Nothing is researched and nothing is saved to a spreadsheet. Use it to check a page, or when you just want one image.</dd></div>
+          <div class="row2"><dt>Batch (FlowHunt)</dt><dd>A whole list of companies. The agent decides which pages matter for each one, pagesnap captures them all, and you get <b>results.xlsx</b> plus a ZIP of screenshots sorted into a folder per company.</dd></div>
+        </dl>
+      </div>
+
+      <div class="infosec">
+        <h2>What you can upload</h2>
+        <dl class="deflist">
+          <div class="row2"><dt>CSV</dt><dd>One company per line — a name, a website, or both.</dd></div>
+          <div class="row2"><dt>Excel (.xlsx)</dt><dd>Converted automatically when you pick it. The <b>first sheet only</b>, up to about 11 MB. Old <b>.xls</b> files need re-saving as .xlsx first.</dd></div>
+          <div class="row2"><dt>Extra columns</dt><dd>Country, VAT number, internal ID — all welcome. The whole row is sent to the agent, which helps it pick the right company when the name is ambiguous.</dd></div>
+          <div class="row2"><dt>Over 50 rows</dt><dd>The list still loads and you can see it, but it will not run. Split the file into chunks of 50 or fewer.</dd></div>
+        </dl>
+      </div>
+
+      <div class="infosec">
+        <h2>What happens when you press Run</h2>
+        <ol class="steps">
+          <li>Your list is sent to the server, one row per company.</li>
+          <li>For each company the <b>FlowHunt agent</b> finds the homepage, About Us and product pages, and writes a short description of the business.</li>
+          <li><b>Pagesnap</b> opens each of those pages in its own browser and captures them full length — waiting for the page to settle, closing the cookie banner, forcing lazy images to load.</li>
+          <li>The table updates row by row as companies finish. The run lives on the server, so you can close the tab and come back.</li>
+          <li>Press <b>Build ZIP</b> to package it, then download.</li>
+        </ol>
+      </div>
+
+      <div class="infosec">
+        <h2>Reading a result</h2>
+        <dl class="deflist">
+          <div class="row2">
+            <dt>The status column</dt>
+            <dd>This is the <b>agent's own verdict on its research</b> — <span class="pill ok">Verified</span><span class="pill warn">Unverified</span><span class="pill bad">Failed</span> — decided before any screenshot is taken. It is not a report on whether the pages were captured.</dd>
+          </div>
+          <div class="row2">
+            <dt>So the two can disagree</dt>
+            <dd>A row can say <b>Verified</b> and have no screenshots (the site blocked the browser), or say <b>Failed</b> and have a complete set. Always check the screenshot columns for what was actually captured.</dd>
+          </div>
+          <div class="row2">
+            <dt>Warnings</dt>
+            <dd>Say what was odd but survivable — only the homepage was found, more than six product pages existed, or the agent used a different domain than the one you gave it.</dd>
+          </div>
+          <div class="row2">
+            <dt>Errors</dt>
+            <dd>Say why a page is missing in plain words: <b>HTTP 403</b> means the site blocks automated browsers, and there is no way around it from here. Others are timeouts, invalid certificates, refused connections, and 404s.</dd>
+          </div>
+          <div class="row2">
+            <dt>failed to capture</dt>
+            <dd>In a screenshot column, means that one page could not be taken. The other columns for that company may still be fine.</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="infosec">
+        <h2>Where your run is kept</h2>
+        <dl class="deflist">
+          <div class="row2">
+            <dt>Only one at a time</dt>
+            <dd>The server keeps <b>one run</b> on disk. Loading a different list replaces it — screenshots, spreadsheet and all. This is deliberate: keeping every run filled the disk and broke captures halfway through.</dd>
+          </div>
+          <div class="row2">
+            <dt>Download before the next list</dt>
+            <dd>If a finished run has not been downloaded, pagesnap says so and <b>refuses to start a different list</b> until you either download it or confirm you do not want it. Once downloaded, the warning goes away.</dd>
+          </div>
+          <div class="row2">
+            <dt>Re-running one company</dt>
+            <dd>The <b>Run</b> button on a single row redoes just that company and replaces its folder. Everything else is left alone, so a couple of failures never mean redoing the list.</dd>
+          </div>
+          <div class="row2">
+            <dt>Run unfinished</dt>
+            <dd>Picks up the rows that never completed. <b>Run all</b> redoes every row from scratch, including the ones that worked.</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="infosec" style="margin-bottom:0">
+        <h2>When something looks wrong</h2>
+        <dl class="deflist">
+          <div class="row2"><dt>A blank or short screenshot</dt><dd>Usually a cookie wall or a page that needs scrolling before it renders. Try the same URL in <b>Single capture</b> to see it on its own.</dd></div>
+          <div class="row2"><dt>Every page 403</dt><dd>That site refuses automated browsers. Nothing in the settings will change it — it has to be captured by hand.</dd></div>
+          <div class="row2"><dt>No homepage found</dt><dd>The agent could not resolve the company to a site. Adding the website address to that row usually fixes it.</dd></div>
+          <div class="row2"><dt>The run seems stuck</dt><dd>Lower <b>Parallel runs</b>. Each company holds its own browser, so 10 at once needs a machine with the memory for it.</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div><!-- /infoView -->
 </div>
 
 <script>
@@ -533,12 +747,15 @@ function render(r) {
 }
 
 /* ---------- tabs ---------- */
+const VIEWS = { single: 'singleView', batch: 'batchView', info: 'infoView' };
 document.querySelectorAll('.tab').forEach((t) => {
   t.onclick = () => {
     document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
     t.classList.add('active');
-    $('singleView').classList.toggle('hidden', t.dataset.view !== 'single');
-    $('batchView').classList.toggle('hidden', t.dataset.view !== 'batch');
+    for (const [view, id] of Object.entries(VIEWS)) {
+      $(id).classList.toggle('hidden', t.dataset.view !== view);
+    }
+    window.scrollTo(0, 0);
   };
 });
 
@@ -804,31 +1021,113 @@ async function api(path, body) {
     body: JSON.stringify(body || {}),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  if (!res.ok) {
+    const err = new Error(data.error || ('HTTP ' + res.status));
+    err.data = data;              // the server's own reason, for callers that act on it
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
+
+/* ── The undownloaded-run guard ───────────────────────────────────────────────
+   The server keeps one run on disk, so loading a different list throws the last
+   one away. It refuses to do that silently while an export is sitting there
+   uncollected; this is the panel that explains it and offers the way out. */
+const fmtBytes = (n) => (!n ? '' : n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB');
+const fmtAgo = (ts) => {
+  if (!ts) return '';
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+  const hrs = Math.round(mins / 60);
+  return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+};
+
+function describeRun(u) {
+  const bits = [];
+  if (u.companyCount) bits.push(`<b>${u.companyCount} companies</b>`);
+  if (u.totalShots) bits.push(`<b>${u.totalShots} screenshots</b>`);
+  if (u.zipBytes) bits.push(fmtBytes(u.zipBytes));
+  const when = fmtAgo(u.exportedAt);
+  return bits.join(', ') + (when ? `, finished ${when}` : '');
+}
+
+function hideKeep() { $('bhKeep').classList.add('hidden'); }
+
+/* Quiet state: a finished run nobody has fetched yet. Nothing is at risk, but
+   it is worth knowing it is there before you load the next list. */
+function showKeepReminder(u) {
+  const el = $('bhKeep');
+  el.classList.remove('hidden', 'danger');
+  $('bhKeepTitle').textContent = 'Your last run is still waiting to be downloaded';
+  $('bhKeepBody').innerHTML =
+    `${describeRun(u)}. Only one run is kept on disk, so loading a different list will replace it. `
+    + 'Download it first and this message goes away.';
+  $('bhKeepWipe').classList.add('hidden');
+  $('bhKeepCancel').classList.add('hidden');
+}
+
+/* Loud state: something has actually tried to replace it. */
+function showKeepBlock(u, proceed) {
+  const el = $('bhKeep');
+  el.classList.remove('hidden');
+  el.classList.add('danger');
+  $('bhKeepTitle').textContent = 'Starting this run would delete your last one';
+  $('bhKeepBody').innerHTML =
+    `The previous run — ${describeRun(u)} — has never been downloaded. `
+    + 'Starting a different list deletes its screenshots and spreadsheet, and they cannot be recovered.';
+  const wipe = $('bhKeepWipe');
+  const cancel = $('bhKeepCancel');
+  wipe.classList.remove('hidden');
+  cancel.classList.remove('hidden');
+  wipe.onclick = () => { hideKeep(); proceed(); };
+  cancel.onclick = hideKeep;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function refreshKeep() {
+  try {
+    const r = await fetch('/api/batch/uncollected');
+    const { uncollected } = await r.json();
+    if (uncollected) showKeepReminder(uncollected);
+    else hideKeep();
+  } catch { /* the reminder is a courtesy — never block the UI on it */ }
+}
+
+/* Downloading is what marks the run collected, so re-check shortly after the
+   browser has had a chance to fetch it. */
+$('bhKeepDl').addEventListener('click', () => { setTimeout(refreshKeep, 1500); });
 
 /* Creates the job if the loaded CSV is not the one the server is holding. The
    server keys its working directory by the company list, so this is also what
    frees the previous run's screenshots. */
-async function ensureJob() {
+async function ensureJob(confirmWipe = false) {
   const sameList = bhJob
     && bhJob.rows.length === bhRows.length
     && bhJob.rows.every((r, i) => r.company === bhRows[i].raw);
   if (sameList) return bhJob;
-  const { job } = await api('/api/batch/job', { rows: bhRows, headers: bhHeaders, ...bhSettings() });
+  const { job } = await api('/api/batch/job', {
+    rows: bhRows, headers: bhHeaders, confirmWipe, ...bhSettings(),
+  });
   bhJob = job;
   return job;
 }
 
-async function run(indexes) {
+async function run(indexes, confirmWipe = false) {
   try {
-    const job = await ensureJob();
+    const job = await ensureJob(confirmWipe);
+    hideKeep();
     const { job: started } = await api(`/api/batch/job/${job.id}/run`, { indexes, ...bhSettings() });
     bhJob = started;
     renderTable(bhJob);
     startPolling();
   } catch (err) {
+    /* Not a failure — the server is asking whether the old run may go. */
+    if (err.data?.code === 'uncollected_run') {
+      showKeepBlock(err.data.uncollected, () => run(indexes, true));
+      return;
+    }
     alert('Could not start: ' + err.message);
   }
 }
@@ -972,6 +1271,8 @@ $('bhExport').onclick = async () => {
     $('bhDl').href = `/batches/${r.zipFile}?t=${Date.now()}`;
     $('bhDl').textContent = `⬇ Download ${r.zipFile}`;
     $('bhDl').classList.remove('hidden');
+    /* It exists now and nobody has it — start reminding. */
+    refreshKeep();
   } catch (err) {
     alert('Could not build the ZIP: ' + err.message);
   } finally {
@@ -979,6 +1280,14 @@ $('bhExport').onclick = async () => {
     btn.textContent = 'Build ZIP';
   }
 };
+
+/* The real download button marks the run collected too, not just the one in
+   the reminder panel. */
+$('bhDl').addEventListener('click', () => { setTimeout(refreshKeep, 1500); });
+
+/* A run finished in a tab that was closed is exactly the case this protects,
+   so the check runs on load, not only after an export in this session. */
+refreshKeep();
 </script>
 </body>
 </html>

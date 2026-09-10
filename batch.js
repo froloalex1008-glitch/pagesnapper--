@@ -160,17 +160,73 @@ export function signatureFor({ companies, width, quality, flowId }) {
 /* Prepares the fixed working directory for a run, and reports whether its
    contents belong to the same list (so already-captured companies can be kept)
    or to a previous one (wiped). */
-export async function prepareWorkDir({ signature, fresh = false, workDir = WORK_DIR }) {
+export async function prepareWorkDir({ signature, companies = null, fresh = false, workDir = WORK_DIR }) {
   await fs.mkdir(BATCH_DIR, { recursive: true });
   const stampPath = path.join(workDir, 'run.json');
-  let previous = null;
-  try { previous = JSON.parse(await fs.readFile(stampPath, 'utf8')); } catch { /* first run */ }
+  const previous = await readRunStamp(workDir);
 
   const reused = Boolean(previous && previous.signature === signature && !fresh);
   if (!reused) await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   await fs.mkdir(path.join(workDir, EXPORT_SUBDIR), { recursive: true });
-  await fs.writeFile(stampPath, JSON.stringify({ signature, at: Date.now() }), 'utf8');
+
+  /* Resuming the same list keeps what the stamp already knows — including
+     whether its export was collected. A different list starts from nothing,
+     because the directory it described has just been deleted. */
+  const stamp = { ...(reused ? previous : {}), signature, at: Date.now() };
+  if (companies) stamp.companies = companies;
+  await fs.writeFile(stampPath, JSON.stringify(stamp), 'utf8');
   return { workDir, exportDir: path.join(workDir, EXPORT_SUBDIR), reused };
+}
+
+/* ── Remembering whether a finished run was ever collected ──────────────────
+   Only one run lives on disk at a time, so starting a different list destroys
+   the previous one's screenshots and spreadsheet. That is fine when the ZIP
+   has already been downloaded and merely expensive when it has not — half an
+   hour of captures gone with no way back.
+
+   So the stamp also records when an export was built and whether anyone
+   actually fetched it. The server refuses to start a different list while an
+   uncollected export is sitting there, unless the caller says to go ahead. */
+export async function readRunStamp(workDir = WORK_DIR) {
+  try {
+    return JSON.parse(await fs.readFile(path.join(workDir, 'run.json'), 'utf8'));
+  } catch {
+    return null;    // no run yet, or the directory was cleared
+  }
+}
+
+async function patchRunStamp(patch, workDir = WORK_DIR) {
+  const current = await readRunStamp(workDir);
+  if (!current) return null;   // nothing to annotate — the run is already gone
+  const next = { ...current, ...patch };
+  await fs.writeFile(path.join(workDir, 'run.json'), JSON.stringify(next), 'utf8').catch(() => {});
+  return next;
+}
+
+export function markExported({ companyCount, totalShots, zipBytes }, workDir = WORK_DIR) {
+  return patchRunStamp({
+    exported: true,
+    exportedAt: Date.now(),
+    companyCount,
+    totalShots,
+    zipBytes,
+    downloaded: false,
+  }, workDir);
+}
+
+export function markDownloaded(workDir = WORK_DIR) {
+  return patchRunStamp({ downloaded: true, downloadedAt: Date.now() }, workDir);
+}
+
+/* The finished-but-uncollected run, if there is one. Null means nothing would
+   be lost by starting something else. */
+export async function uncollectedRun(workDir = WORK_DIR) {
+  const stamp = await readRunStamp(workDir);
+  if (!stamp || !stamp.exported || stamp.downloaded) return null;
+  // The stamp can outlive the file it describes; do not warn about a ghost.
+  const zipPath = path.join(BATCH_DIR, ZIP_NAME);
+  if (!fsSync.existsSync(zipPath)) return null;
+  return stamp;
 }
 
 /* Removes everything in the batches directory that is not the current work
@@ -722,6 +778,13 @@ export async function buildExport({ rows, workDir = WORK_DIR, onLog = () => {} }
       }
     }
   }
+  /* From here the ZIP exists but nobody has it yet. Recorded so that starting
+     a different list can stop and say what is about to be thrown away. */
+  await markExported(
+    { companyCount: rows.length, totalShots: files.size, zipBytes: size },
+    workDir,
+  );
+
   return {
     zipFile: zipName,
     zipPath,
@@ -745,7 +808,7 @@ export async function runBatch({
   onLog = () => {}, isAborted = () => false,
 }) {
   const signature = signatureFor({ companies, width, quality, flowId });
-  const { workDir, exportDir } = await prepareWorkDir({ signature, fresh });
+  const { workDir, exportDir } = await prepareWorkDir({ signature, companies, fresh });
   const ledgerPath = path.join(workDir, 'rows.ndjson');
 
   /* One JSON object per finished company. A truncated last line (killed

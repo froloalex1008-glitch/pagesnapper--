@@ -4,7 +4,10 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { capture, SHOTS_DIR } from './capture.js';
-import { BATCH_DIR, pruneBatchDir, xlsxBufferToCsv } from './batch.js';
+import {
+  BATCH_DIR, ZIP_NAME, pruneBatchDir, xlsxBufferToCsv,
+  uncollectedRun, markDownloaded,
+} from './batch.js';
 import {
   createJob, getJob, publicJob, startJob, stopJob, exportJob, restoreJob,
   clampConcurrency, MAX_CONCURRENCY, DEFAULT_CONCURRENCY,
@@ -185,6 +188,13 @@ app.use((err, _req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/screenshots', express.static(SHOTS_DIR));
+/* Fetching the ZIP is how a run stops being "uncollected". The download itself
+   is still plain static serving; this only notes that it happened, so the next
+   list can be started without a warning about losing work that is now safe. */
+app.get(`/batches/${ZIP_NAME}`, (_req, _res, next) => {
+  markDownloaded().catch(() => {});
+  next();
+});
 app.use('/batches', express.static(BATCH_DIR));
 
 /* Streams progress to the browser as newline-delimited JSON, so the UI can show
@@ -315,7 +325,24 @@ app.post('/api/batch/xlsx-to-csv', async (req, res) => {
   }
 });
 
-app.post('/api/batch/job', (req, res) => {
+/* What the last finished run left behind, if nobody has downloaded it. The UI
+   asks on load so it can keep a reminder in front of you, rather than only
+   finding out at the moment the files are about to go. */
+app.get('/api/batch/uncollected', async (_req, res) => {
+  const stamp = await uncollectedRun().catch(() => null);
+  if (!stamp) return res.json({ uncollected: null });
+  res.json({
+    uncollected: {
+      companyCount: stamp.companyCount ?? null,
+      totalShots: stamp.totalShots ?? null,
+      zipBytes: stamp.zipBytes ?? null,
+      exportedAt: stamp.exportedAt ?? null,
+      zipFile: ZIP_NAME,
+    },
+  });
+});
+
+app.post('/api/batch/job', async (req, res) => {
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
   const companies = rows.map((r) => String(r?.raw ?? r ?? '').trim()).filter(Boolean);
   if (!companies.length) return res.status(400).json({ error: 'No company rows' });
@@ -326,6 +353,31 @@ app.post('/api/batch/job', (req, res) => {
 
   const existing = getJob();
   if (existing?.running) return res.status(409).json({ error: 'A batch is still running — stop it first' });
+
+  /* Only one run's files fit on disk, so a different list wipes the last one.
+     If its export was never downloaded, stop and say so — the caller has to
+     ask again with confirmWipe once the person has actually decided. Running
+     the SAME list again is a resume, not a loss, so it passes straight through. */
+  if (!req.body?.confirmWipe) {
+    const stamp = await uncollectedRun().catch(() => null);
+    const sameList = stamp
+      && Array.isArray(stamp.companies)
+      && stamp.companies.length === companies.length
+      && stamp.companies.every((c, i) => c === companies[i]);
+    if (stamp && !sameList) {
+      return res.status(409).json({
+        error: 'The last run has not been downloaded yet',
+        code: 'uncollected_run',
+        uncollected: {
+          companyCount: stamp.companyCount ?? null,
+          totalShots: stamp.totalShots ?? null,
+          zipBytes: stamp.zipBytes ?? null,
+          exportedAt: stamp.exportedAt ?? null,
+          zipFile: ZIP_NAME,
+        },
+      });
+    }
+  }
 
   const job = createJob({
     companies,
