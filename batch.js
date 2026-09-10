@@ -838,24 +838,41 @@ export async function xlsxBufferToCsv(buffer) {
   if (!ws) return '';
 
   const cellText = (cell) => {
+    /* A merged range stores its value once, on the top-left cell; every other
+       cell it covers reports that same value back. Without this, a header
+       merged down two rows (Excel's usual way of making a taller header strip)
+       comes out as two identical header lines, and the second one is read as a
+       company. Only the master cell speaks for the range. */
+    if (cell.isMerged && cell.master && cell.master.address !== cell.address) return '';
+
     const v = cell.value;
     if (v == null) return '';
+    let s;
     if (typeof v === 'object') {
-      if (v.richText) return v.richText.map((t) => t.text).join('');
-      if (v.text) return String(v.text);                 // hyperlink { text, hyperlink }
-      if (v.result != null) return String(v.result);      // formula { formula, result }
-      if (v instanceof Date) return v.toISOString().slice(0, 10);
-      return '';
+      if (v.richText) s = v.richText.map((t) => t.text).join('');
+      else if (v.text) s = String(v.text);                 // hyperlink { text, hyperlink }
+      else if (v.result != null) s = String(v.result);      // formula { formula, result }
+      else if (v instanceof Date) s = v.toISOString().slice(0, 10);
+      else s = '';
+    } else {
+      s = String(v);
     }
-    return String(v);
+
+    /* Alt+Enter inside a cell is a line break, and a spreadsheet of results
+       often has several file paths stacked in one cell that way. The consumer
+       of this text is a line-based parser where one line means one company, so
+       a cell that spans lines has to be flattened or that single company turns
+       into several bogus rows. */
+    return s.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   };
-  const csvField = (s) => (/[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  const csvField = (s) => (/[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
 
   const lines = [];
   ws.eachRow({ includeEmpty: false }, (row) => {
     // row.values is 1-indexed with a leading empty slot — see ExcelJS docs.
     const cells = row.values.slice(1).map((_, i) => cellText(row.getCell(i + 1)));
     // A row that is empty once formatting is stripped carries nothing to send.
+    // This is also what drops the lower half of a vertically merged header.
     if (cells.every((c) => !c.trim())) return;
     lines.push(cells.map(csvField).join(','));
   });
