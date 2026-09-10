@@ -92,6 +92,46 @@
     font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent}
   .tab:hover{color:var(--fg)}
   .tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+
+  /* ── "What is this?" panel ────────────────────────────────────────────────
+     Each tab opens on an explanation of what that mode is for. Someone
+     landing here for the first time should not have to press Capture to
+     find out what pressing Capture does. */
+  .explain{
+    display:flex;gap:14px;align-items:flex-start;
+    background:linear-gradient(#4c8dff0f,transparent);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:10px;
+    padding:16px 18px;
+    margin-bottom:20px;
+  }
+  .explain .ico{
+    flex:none;width:26px;height:26px;border-radius:7px;
+    background:#4c8dff1f;color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:700;margin-top:1px;
+  }
+  .explain .body{min-width:0}
+  .explain h3{margin:0 0 5px;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+  .explain p{margin:0 0 9px;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .explain p:last-child{margin-bottom:0}
+  .explain b{color:var(--fg);font-weight:600}
+  .explain .note{
+    display:flex;gap:7px;align-items:baseline;
+    font-size:13px;color:var(--muted);
+  }
+  .explain .note em{
+    flex:none;font-style:normal;font-weight:600;color:var(--fg);
+    font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;
+  }
+  .explain ol{margin:0 0 9px;padding-left:18px;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .explain ol li{margin-bottom:2px}
+  .explain ol li::marker{color:var(--accent);font-weight:600}
+  @media (max-width:560px){
+    .explain{flex-direction:column;gap:10px}
+  }
+
   input[type=password],input[type=text]{width:100%;background:#0d1117;border:1px solid var(--line);
     color:var(--fg);padding:11px 14px;border-radius:8px;font-size:15px}
   input[type=password]:focus,input[type=text]:focus{outline:none;border-color:var(--accent)}
@@ -163,6 +203,15 @@
   </div>
 
   <div id="singleView">
+  <div class="explain">
+    <div class="ico" aria-hidden="true">1</div>
+    <div class="body">
+      <h3>Single capture — one web address, one screenshot</h3>
+      <p>Paste any web address and get a picture of that page, <b>the whole page from top to bottom</b> — not just the part that fits on a screen. It waits for the page to finish loading, scrolls through it so lazy images appear, closes the cookie banner and stops animations, then takes the shot.</p>
+      <p class="note"><em>Use it when</em> you want to look at one specific page — checking a site before putting it in a list, or grabbing a single screenshot to send someone.</p>
+      <p class="note"><em>You get</em> one image you can view here and download as a PNG. No company research, no spreadsheet — that is the Batch tab.</p>
+    </div>
+  </div>
   <div class="card">
     <form id="f">
       <div class="field grow">
@@ -238,15 +287,23 @@
   </div><!-- /singleView -->
 
   <div id="batchView" class="hidden">
+    <div class="explain">
+      <div class="ico" aria-hidden="true">∞</div>
+      <div class="body">
+        <h3>Batch — a whole list of companies, done for you</h3>
+        <p>Give it a list of companies and it handles all of them start to finish. You do not have to know which pages to capture: <b>a FlowHunt agent works that out for each company</b>, then pagesnap screenshots every page it found.</p>
+        <ol>
+          <li>Upload a list of companies — a CSV or an Excel file, one company per line.</li>
+          <li>For each company, the agent finds the homepage, About Us and product pages, and writes a short description of the business.</li>
+          <li>Pagesnap captures every one of those pages, full length.</li>
+          <li>You download a <b>results.xlsx</b> and a <b>ZIP</b> with one folder of screenshots per company.</li>
+        </ol>
+        <p class="note"><em>Use it when</em> you have more than a couple of companies and want the finished package rather than individual images.</p>
+        <p class="note"><em>Before you start</em> pick a flow below. If this server already has a FlowHunt key configured you can leave the key and workspace blank; otherwise paste them in first.</p>
+        <p class="note"><em>Good to know</em> the run lives on the server. You can close this tab, come back later, and it will still be going. Any single company can be re-run on its own without redoing the list.</p>
+      </div>
+    </div>
     <div class="card">
-      <p class="hint" style="margin-top:0">
-        Give it a FlowHunt flow and a CSV of companies (one per line — name and/or website, extra
-        columns are fine). The CSV is loaded into the table below; run the whole list or any single
-        row. For each company the flow finds the homepage, about-us and product pages, each is
-        captured full-page as JPEG into a folder named after the company, and the ZIP contains
-        those folders plus a results.xlsx index.
-      </p>
-      <div style="height:18px"></div>
 
       <div class="field" style="margin-bottom:14px">
         <label for="bhApiKey">FlowHunt API key</label>
@@ -264,8 +321,8 @@
 
       <div class="row" style="margin-bottom:6px;align-items:flex-end">
         <div class="field grow">
-          <label for="bhCsv">CSV of companies (one per line — name and/or website)</label>
-          <input id="bhCsv" type="file" accept=".csv,text/csv">
+          <label for="bhCsv">CSV or Excel of companies (one per line — name and/or website)</label>
+          <input id="bhCsv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
         </div>
         <div class="field">
           <label for="bhParallel">Parallel runs</label>
@@ -546,9 +603,21 @@ function parseCompanyRows(text) {
   const looksUrl = (s) => /^https?:\/\//i.test(s) || /^[\w-]+\.[a-z]{2,}/i.test(s);
   const LEGAL_SUFFIX = /(^|[\s.,])(ltd|limited|plc|inc|llc|corp|co|gmbh|ag|kg|ohg|mbh|s\.?r\.?o|a\.?s|k\.?s|sp\.?\s?z\.?o\.?o|sa|s\.?a|srl|spa|s\.?p\.?a|bv|b\.?v|nv|n\.?v|oy|ab|as|aps|kft|zrt|bt|sas|sarl|eurl|sl|s\.?l|lda|doo|d\.?o\.?o)([\s.,]|$)/i;
   const HEADER_WORD = /(^|[\s_\-])(url|urls|homepage|website|web|site|domain|company|name|business|flow_input|input|vat|country)([\s_\-]|$)/i;
+  // A blank cell, or a bare serial-number/index cell ("", "No.", "#", "1."),
+  // carries no signal either way — exported spreadsheets (this is exactly what
+  // KPMG's own benchmarking file looks like) often number rows in column A and
+  // put the real header word ("Website address") in column B. Rather than read
+  // an empty/numeric cell 0 as "not a header", look past it to the next
+  // non-empty cell before deciding.
+  const isIndexLike = (s) => s === '' || /^(no\.?|#|s\.?\/?no\.?|sr\.?\s?no\.?|item|row|index|id)$/i.test(s) || /^\d+\.?$/.test(s);
 
   const head = lines[0];
-  const headCell = splitCsvLine(head)[0] || '';
+  const headCells = splitCsvLine(head);
+  let headCell = headCells[0] || '';
+  if (isIndexLike(headCell)) {
+    const next = headCells.slice(1).find((c) => c !== '');
+    if (next !== undefined) headCell = next;
+  }
   const rowNamesASite = head.split(/[,;]/).some((c) => looksUrl(c.trim()));
   const isHeader =
     !rowNamesASite
@@ -570,10 +639,46 @@ function parseCompanyRows(text) {
   return { headers, rows };
 }
 
+/* .xlsx arrives as binary, not text — send it to the server, which already
+   depends on exceljs to WRITE results.xlsx and so can also READ this one back
+   into the same CSV text the rest of this file already knows how to parse.
+   Keeps every column-detection and dedup rule in parseCompanyRows working
+   unchanged for both file types, instead of a second, divergent code path. */
+async function xlsxFileToCsvText(file) {
+  const buf = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  // chunked to avoid a call-stack blowout on apply() with a large file
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  const b64 = btoa(binary);
+  const res = await fetch('/api/batch/xlsx-to-csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: b64 }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Could not read that Excel file (HTTP ${res.status})`);
+  return data.csv || '';
+}
+
 $('bhCsv').onchange = async () => {
   const file = $('bhCsv').files[0];
   if (!file) { bhRows = []; bhHeaders = []; $('bhCount').textContent = ''; updateRunEnabled(); return; }
-  const text = await file.text();
+  const isXlsx = /\.xlsx$/i.test(file.name) || file.type.includes('spreadsheetml');
+  $('bhCount').innerHTML = isXlsx ? 'Reading Excel file…' : '';
+  let text;
+  try {
+    text = isXlsx ? await xlsxFileToCsvText(file) : await file.text();
+  } catch (err) {
+    bhRows = []; bhHeaders = [];
+    $('bhCount').innerHTML = `<span class="err">${err.message}</span>`;
+    $('bhTableCard').classList.add('hidden');
+    updateRunEnabled();
+    return;
+  }
   const parsed = parseCompanyRows(text);
   bhRows = parsed.rows;
   bhHeaders = parsed.headers;

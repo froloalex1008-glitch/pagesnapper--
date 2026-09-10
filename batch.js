@@ -815,3 +815,49 @@ export function folderNamesFor(companies) {
     return folder;
   });
 }
+
+/* ── Reading a client's .xlsx back in ────────────────────────────────────
+   KPMG's own company lists come as .xlsx as often as .csv, and the upload
+   field used to only take the latter. Rather than teach the browser-side
+   parser (parseCompanyRows in public/index.html) a second file format with
+   its own header-detection and dedup rules, this turns the workbook into the
+   exact same CSV text a .csv upload would have produced — the one parser
+   keeps handling both, and the two file types can never drift apart in what
+   they accept.
+
+   Only the FIRST worksheet is read — the same "one list per run" shape the
+   CSV path already assumes. A cell's displayed text is preferred over its
+   raw value (result.text on a formula, a hyperlink's friendly text) so a
+   column of "=HYPERLINK(...)" cells or computed lookups comes through as
+   what a reviewer would actually see in Excel, not a formula string or an
+   object. */
+export async function xlsxBufferToCsv(buffer) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+  if (!ws) return '';
+
+  const cellText = (cell) => {
+    const v = cell.value;
+    if (v == null) return '';
+    if (typeof v === 'object') {
+      if (v.richText) return v.richText.map((t) => t.text).join('');
+      if (v.text) return String(v.text);                 // hyperlink { text, hyperlink }
+      if (v.result != null) return String(v.result);      // formula { formula, result }
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      return '';
+    }
+    return String(v);
+  };
+  const csvField = (s) => (/[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
+  const lines = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    // row.values is 1-indexed with a leading empty slot — see ExcelJS docs.
+    const cells = row.values.slice(1).map((_, i) => cellText(row.getCell(i + 1)));
+    // A row that is empty once formatting is stripped carries nothing to send.
+    if (cells.every((c) => !c.trim())) return;
+    lines.push(cells.map(csvField).join(','));
+  });
+  return lines.join('\n');
+}

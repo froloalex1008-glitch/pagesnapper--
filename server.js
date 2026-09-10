@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { capture, SHOTS_DIR } from './capture.js';
-import { BATCH_DIR, pruneBatchDir } from './batch.js';
+import { BATCH_DIR, pruneBatchDir, xlsxBufferToCsv } from './batch.js';
 import {
   createJob, getJob, publicJob, startJob, stopJob, exportJob, restoreJob,
   clampConcurrency, MAX_CONCURRENCY, DEFAULT_CONCURRENCY,
@@ -166,7 +166,23 @@ if (AUTH_ENABLED) {
   console.log('  auth: DISABLED (set PAGESNAP_USERNAME and PAGESNAP_PASSWORD to require a login)');
 }
 
-app.use(express.json({ limit: '5mb' })); // raised from the default 100kb — a batch CSV of urls can exceed that
+/* 15mb, not the 5mb a plain CSV needed — an uploaded .xlsx travels here as
+   base64 (~33% larger than the file) and a real client workbook carries
+   styles and a header row that a CSV never would. */
+app.use(express.json({ limit: '15mb' }));
+/* Without this, a body over the limit above returns Express's default HTML
+   error page, and the xlsx-upload handler's `res.json()` on the client
+   fails to parse it — the user sees "Unexpected token '<'" instead of a
+   sentence they can act on. */
+app.use((err, _req, res, next) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'That file is too large to upload (15MB limit).' });
+  }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Could not read that upload — the request body was malformed.' });
+  }
+  next(err);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/screenshots', express.static(SHOTS_DIR));
 app.use('/batches', express.static(BATCH_DIR));
@@ -272,6 +288,33 @@ const fhSettings = (body = {}) => ({
 /* Creates (or replaces) the job from the parsed CSV. Replacing it is what
    frees the previous run's screenshots: the working directory is keyed by the
    company list, so a different list wipes it. */
+/* Turns an uploaded .xlsx into the CSV text the browser's own CSV parser
+   already knows how to read (parseCompanyRows in public/index.html) — so an
+   Excel list of companies is accepted without teaching the client a second
+   parsing path. The file itself is never written to disk or kept past this
+   request. */
+app.post('/api/batch/xlsx-to-csv', async (req, res) => {
+  const b64 = req.body?.file;
+  if (!b64 || typeof b64 !== 'string') return res.status(400).json({ error: 'No file' });
+
+  let buffer;
+  try {
+    buffer = Buffer.from(b64, 'base64');
+  } catch {
+    return res.status(400).json({ error: 'That did not look like a file upload.' });
+  }
+  if (!buffer.length) return res.status(400).json({ error: 'That file is empty.' });
+
+  try {
+    const csv = await xlsxBufferToCsv(buffer);
+    res.json({ csv });
+  } catch (err) {
+    // A non-.xlsx file (or a corrupt one) fails inside ExcelJS's own parser —
+    // its message is technical, so this says plainly what to do instead.
+    res.status(400).json({ error: `Could not read that as an Excel file (${err.message}). Try re-saving it as .xlsx, or upload a .csv instead.` });
+  }
+});
+
 app.post('/api/batch/job', (req, res) => {
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
   const companies = rows.map((r) => String(r?.raw ?? r ?? '').trim()).filter(Boolean);
